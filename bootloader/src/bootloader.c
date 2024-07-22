@@ -43,6 +43,11 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 #define UPDATE ((unsigned char)'U')
 #define BOOT ((unsigned char)'B')
 
+//colors!!
+#define RED GPIO_PIN_1
+#define BLUE GPIO_PIN_2
+#define GREEN GPIO_PIN_3
+
 // Device metadata
 uint16_t * fw_version_address = (uint16_t *)METADATA_BASE;
 uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2);
@@ -50,6 +55,91 @@ uint8_t * fw_release_message_address;
 
 // Firmware Buffer
 unsigned char data[FLASH_PAGESIZE];
+
+void set_led_color(uint8_t color) {
+    GPIOPinWrite(GPIO_PORTF_BASE, RED | BLUE | GREEN, color);
+}
+
+void flash_rainbow_led() {
+    uint32_t dit = SysCtlClockGet() / 5; // Adjust delay for visible effect
+    uint32_t dash = SysCtlClockGet() / 2; // Adjust delay for visible effect
+    uint32_t space = SysCtlClockGet() / 15; // Adjust delay for visible effect
+
+    // Flash in 'arthi' in morse code
+
+    //A
+    set_led_color(RED); // Red
+    SysCtlDelay(dit);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+    set_led_color(RED); // Red
+    SysCtlDelay(dash);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+  
+    //R
+    set_led_color(GREEN); // Green
+    SysCtlDelay(dit);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+    set_led_color(GREEN); // Green
+    SysCtlDelay(dash);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+    set_led_color(GREEN); // Green
+    SysCtlDelay(dit);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+
+    //T
+    set_led_color(BLUE); // Blue
+    SysCtlDelay(dash);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+
+    //H
+    set_led_color(RED | BLUE); // Magenta
+    SysCtlDelay(dit);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+    set_led_color(RED | BLUE); // Magenta
+    SysCtlDelay(dit);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+    set_led_color(RED | BLUE); // Magenta
+    SysCtlDelay(dit);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+    set_led_color(RED | BLUE); // Magenta
+    SysCtlDelay(dit);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+
+    //I
+    set_led_color(GREEN | BLUE); // Cyan
+    SysCtlDelay(dit);
+    set_led_color(0);
+    SysCtlDelay(space);
+   
+    set_led_color(GREEN | BLUE); // Cyan
+    SysCtlDelay(dit);
+    set_led_color(0);
+    SysCtlDelay(space);
+    
+
+    // Turn off LED
+    set_led_color(0);
+}
 
 // Delay to allow time to connect GDB
 // green LED as visual indicator of when this function is running
@@ -88,13 +178,13 @@ int main(void) {
 
     // Enable the GPIO pin for the LED (PF3).  Set the direction as output, and
     // enable the GPIO pin for digital function.
-    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_3);
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, RED | BLUE | GREEN);
 
     // debug_delay_led();
 
     initialize_uarts(UART0);
 
-    uart_write_str(UART0, "Welcome to the BWSI Vehicle Update Service!\n");
+    uart_write_str(UART0, "Slay queens!!! We are in the BWSI Vehicle Update Service!!\n");
     uart_write_str(UART0, "Send \"U\" to update, and \"B\" to run the firmware.\n");
 
     int resp;
@@ -103,13 +193,14 @@ int main(void) {
 
         if (instruction == UPDATE) {
             uart_write_str(UART0, "U");
+            uart_write_str(UART0, "Ok we're loading the new firmware......\n");
             load_firmware();
-            uart_write_str(UART0, "Loaded new firmware.\n");
-            nl(UART0);
+            uart_write_str(UART0, "Yas queen! We've loaded your firmware!!!\n");
         } else if (instruction == BOOT) {
             uart_write_str(UART0, "B");
-            uart_write_str(UART0, "Booting firmware...\n");
-            boot_firmware();
+            uart_write_str(UART0, "\nHmmm..we're booting firmware...\n");
+            flash_rainbow_led();
+            boot_firmware():
         }
     }
 }
@@ -129,16 +220,20 @@ void load_firmware(void) {
     uint32_t size = 0;
 
     // Get version.
+    uart_write_str(UART0, "Send the version: ");
     rcv = uart_read(UART0, BLOCKING, &read);
     version = (uint32_t)rcv;
     rcv = uart_read(UART0, BLOCKING, &read);
     version |= (uint32_t)rcv << 8;
+    uart_write_str(UART0, "Version received! ");
 
     // Get size.
+    uart_write_str(UART0, "Send the size: ");
     rcv = uart_read(UART0, BLOCKING, &read);
     size = (uint32_t)rcv;
     rcv = uart_read(UART0, BLOCKING, &read);
     size |= (uint32_t)rcv << 8;
+    uart_write_str(UART0, "Size received!");
 
     // Compare to old version and abort if older (note special case for version 0).
     // If no metadata available (0xFFFF), accept version 1
@@ -150,6 +245,7 @@ void load_firmware(void) {
     if (version != 0 && version < old_version) {
         uart_write(UART0, ERROR); // Reject the metadata.
         SysCtlReset();            // Reset device
+        uart_write_str(UART0, "Rejected. ");
         return;
     } else if (version == 0) {
         // If debug firmware, don't change version
@@ -162,6 +258,7 @@ void load_firmware(void) {
     program_flash((uint8_t *) METADATA_BASE, (uint8_t *)(&metadata), 4);
 
     uart_write(UART0, OK); // Acknowledge the metadata.
+
 
     /* Loop here until you can get all your characters and stuff */
     while (1) {
@@ -199,6 +296,7 @@ void load_firmware(void) {
         } // if
 
         uart_write(UART0, OK); // Acknowledge the frame.
+        
     } // while(1)
 }
 

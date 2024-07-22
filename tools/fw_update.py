@@ -72,6 +72,7 @@ def send_frame(ser, frame, debug=False):
     time.sleep(0.1)
 
     if resp != RESP_OK:
+        print(f"Unexpected response: {repr(resp)}")  # Print unexpected response
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
 
     if debug:
