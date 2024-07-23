@@ -14,9 +14,50 @@ the build outputs into the host tools directory for programming.
 import os
 import pathlib
 import subprocess
+import cryptography
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent.absolute()
 BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
+ROOT_KEY = b"hi"
+
+
+def key_derivation(root_key):
+    salt = os.urandom(16)
+    info1 = b"AES key"
+    info2 = b"HMAC key"
+    backend = default_backend()
+
+    ikm = root_key
+
+    hkdf = HKDF(
+    algorithm=hashes.SHA256(),
+    length=len(ROOT_KEY),  # Length of the keying material in bytes
+    salt=salt,
+    info=info1,
+    backend=backend)
+    aes_key = hkdf.derive(ikm)
+
+    hkdf = HKDF(
+    algorithm=hashes.SHA256(),
+    length=len(ROOT_KEY),  # Length of the keying material in bytes
+    salt=salt,
+    info=info2,
+    backend=backend)
+    
+
+    hmac_key = hkdf.derive(ikm)
+    print(aes_key.hex())
+    print(hmac_key.hex())
+
+    return aes_key, hmac_key
+
+
+
+
 
 
 def make_bootloader() -> bool:
@@ -30,6 +71,6 @@ def make_bootloader() -> bool:
     # Return True if make returned 0, otherwise return False.
     return status == 0
 
-
 if __name__ == "__main__":
-    make_bootloader()
+    key_derivation(ROOT_KEY)
+    #make_bootloader()
