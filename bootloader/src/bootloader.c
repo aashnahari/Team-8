@@ -128,6 +128,44 @@ void load_firmware(void) {
     uint32_t version = 0;
     uint32_t size = 0;
 
+    
+
+
+
+
+
+
+/// ------------------------------------------------------------------- CHANGES
+    bool verify_hmac(uint8_t *sig, uint8_t *ky, uint8_t *msg){   //function for hmac verifying
+        uint8_t hmac_result[WC_MAX_DIGEST_SIZE];
+        Hmac hmac;
+        wc_HmacInit(&hmac);
+        if (wc_HmacSetKey(&hmac, WC_SHA256, ky, 32) != 0){
+            perror("wc_HmacSetKey failed");
+            return false;
+            
+        }
+        if (wc_HmacUpdate(&hmac, msg, sizeof(msg)) != 0){
+            perror("wc_HmacUpdate failed");
+            return false;
+        }
+
+        if (wc_HmacFinal(&hmac, hmac_result) != 0) {
+            perror("wc_HmacFinal failed");
+            return false;
+        }
+
+        hmac_len = wc_HmacGetSize(&hmac)
+        if (sizeof(sig) != hmac_len || memcmp(hmac_result, expected_hmac, hmac_len) != 0) {
+            return false;
+        }  
+
+        return true;
+    }   
+    
+    //key (get key later)
+    char verify_key[] = "temp_key";
+
     // Get version.
     rcv = uart_read(UART0, BLOCKING, &read);
     version = (uint32_t)rcv;
@@ -136,38 +174,77 @@ void load_firmware(void) {
 
     // Get size.
     rcv = uart_read(UART0, BLOCKING, &read);
-    size = (uint32_t)rcv;
+    uint16_t fw_size = (uint16_t)rcv;
     rcv = uart_read(UART0, BLOCKING, &read);
-    size |= (uint32_t)rcv << 8;
+    fw_size |= (uint16_t)rcv << 8;
 
-
-/*   with open("hmackeyfile.bin", "rb") as f:      //get the data frames + hmac key
-        key = f.read()
-        print(key)
-    size = ser.read(2)                             //get size of first data frame from first 2 bytes                 
-    size = u16(size, endian="little")
-
-    while size > 0:
-        data = ser.read(size)                      //read in the data
-        h = HMAC.new(key, digestmod=SHA256)
-        h.update(data)
-        hmac = ser.read(h.digest_size)
-        try:
-            h.verify(hmac)
-
-        except:
-            //restart the device
-        size = u16(ser.read(2), endian = "little")    //update and get the size of the next frame's data
-
-
-*/
-    //-----------------------------------------------------------------------
+    //get "message"
+    uint8_t message[1024];
+    for (int i = 0; i < 1024; i++){
+        message[i] = uart_read(UART0, BLOCKING, &read);
+    }
+    //get signature to verify frame 0
+    uint8_t hmac_signature[32];
+    for (int i = 0; i < 32; i++){
+        hmac_signature[i] = uart_read(UART0, BLOCKING, &read);
+    }
     //Verifying hmac signature for firmware data frames
-    
+    if (verify_hmac(hmac_signature, verify_key, message) == false){
+        SysCtlReset();
+    }
+
+    int track = 1060; 
+    while (track < fw_size){
+        //get the size of the current frame data
+        rcv = uart_read(UART0, BLOCKING, &read);
+        uint16_t chunk_size = (uint16_t)rcv;
+        rcv = uart_read(UART0, BLOCKING, &read);
+        chunk_size |= (uint16_t)rcv << 8;
+
+        uint8_t iv[16];
+        for (int i = 0; i < 16; i++){
+            iv[i] = uart_read(UART0, BLOCKING, &read);
+        }
 
 
+        uint8_t data_chunk[512];
+        for (int i = 0; i < 512; i++){
+            data_chunk[i] = uart_read(UART0, BLOCKING, &read);
+        }
+
+        uint8_t chunk_signature[32];
+        for (int i = 0; i < 32; i++){
+            chunk_signature[i] = uart_read(UART0, BLOCKING, &read);
+        }
+        if(verify_hmac(chunk_signature, verify_key, data_chunk) = false){
+            SysCtlReset();
+        }
+
+        track += 512
+    }
+
+    //verify signature for end frame
+    uint8_t end_msg[2];
+    for (int i = 0; i < 2; i++){
+        end_msg[i] = uart_read(UART0, BLOCKING, &read);
+    }
+
+    uint8_t end_signature[32];
+    for (int i = 0; i < 2; i++){
+        end_signature[i] = uart_read(UART0, BLOCKING, &read);
+    }
+
+    if(verify_hmac(end_signature, verify_key, end_msg) = false){
+        SysCtlReset();
+    }
 
     //-----------------------------------------------------------------------
+
+
+
+
+
+
 
     // Compare to old version and abort if older (note special case for version 0).
     // If no metadata available (0xFFFF), accept version 1
