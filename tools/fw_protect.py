@@ -9,11 +9,20 @@ Firmware Bundle-and-Protect Tool
 """
 import argparse
 from pwn import *
+from Crypto.Hash import HMAC, SHA256
 def sign(ky, frame_data):  #call 'sign' whenever need to sign
     #-----------------------------------------------------------------------
     signature = (HMAC.new(ky, frame_data, digestmod=SHA256)).digest()
     return signature
     #-----------------------------------------------------------------------
+
+# def test_HMAC(key, frame_data):
+#     # hmac = (HMAC.new(key, frame_data, digestmod=SHA256)).digest()
+#     secret = key
+#     h = HMAC.new(secret, digestmod=SHA256)
+#     h.update(frame_data)
+#     print(f"HMAC {h.digest()}")
+
 
 def protect_firmware(infile, outfile, version, message):
 # FRAME 0: METADATA
@@ -53,7 +62,8 @@ def protect_firmware(infile, outfile, version, message):
         data_hash = b'\x01\x01'
 
         # add message & hash to firmware frame
-        data_frame = frame_size + chunk + 
+        # data_frame = frame_size + chunk + # TODO: add message here
+        data_frame = b'change me' # TODO: update as above
 
         #write frames into outfile
         with open(outfile, "wb+") as outfile:
@@ -70,13 +80,17 @@ def protect_firmware(infile, outfile, version, message):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Firmware Update Tool")
-    parser.add_argument("--infile", help="Path to the firmware image to protect.", required=True)
-    parser.add_argument("--outfile", help="Filename for the output firmware.", required=True)
-    parser.add_argument("--version", help="Version number of this firmware.", required=True)
-    parser.add_argument("--message", help="Release message for this firmware.", required=True)
-    # need to add an argument of the key for encryption --> idk how to do this without exposing 
-    #the key but whatever
-    args = parser.parse_args()
+    #daataa = b'hello'
+    #key = b'gbyee'
+    print("")
+    #test_HMAC(key, daataa)
+    # parser = argparse.ArgumentParser(description="Firmware Update Tool")
+    # parser.add_argument("--infile", help="Path to the firmware image to protect.", required=True)
+    # parser.add_argument("--outfile", help="Filename for the output firmware.", required=True)
+    # parser.add_argument("--version", help="Version number of this firmware.", required=True)
+    # parser.add_argument("--message", help="Release message for this firmware.", required=True)
+    # # need to add an argument of the key for encryption --> idk how to do this without exposing 
+    # #the key but whatever
+    # args = parser.parse_args()
 
-    protect_firmware(infile=args.infile, outfile=args.outfile, version=int(args.version), message=args.message)
+    # protect_firmware(infile=args.infile, outfile=args.outfile, version=int(args.version), message=args.message)
