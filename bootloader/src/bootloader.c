@@ -140,13 +140,41 @@ void load_firmware(void) {
     rcv = uart_read(UART0, BLOCKING, &read);
     size |= (uint32_t)rcv << 8;
 
+
+/*   with open("hmackeyfile.bin", "rb") as f:      //get the data frames + hmac key
+        key = f.read()
+        print(key)
+    size = ser.read(2)                             //get size of first data frame from first 2 bytes                 
+    size = u16(size, endian="little")
+
+    while size > 0:
+        data = ser.read(size)                      //read in the data
+        h = HMAC.new(key, digestmod=SHA256)
+        h.update(data)
+        hmac = ser.read(h.digest_size)
+        try:
+            h.verify(hmac)
+
+        except:
+            //restart the device
+        size = u16(ser.read(2), endian = "little")    //update and get the size of the next frame's data
+
+
+*/
+    //-----------------------------------------------------------------------
+    //Verifying hmac signature for firmware data frames
+    
+
+
+
+    //-----------------------------------------------------------------------
+
     // Compare to old version and abort if older (note special case for version 0).
     // If no metadata available (0xFFFF), accept version 1
     uint16_t old_version = *fw_version_address;
     if (old_version == 0xFFFF) {
         old_version = 1;
     }
-
     if (version != 0 && version < old_version) {
         uart_write(UART0, ERROR); // Reject the metadata.
         SysCtlReset();            // Reset device
