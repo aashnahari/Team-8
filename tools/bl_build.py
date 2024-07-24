@@ -50,8 +50,15 @@ def key_derivation(root_key):
     
 
     hmac_key = hkdf.derive(ikm)
-    print(aes_key.hex())
-    print(hmac_key.hex())
+    with open('../Team-8/tools/secret_build_output.txt', 'wb') as file:
+        print(aes_key.hex())
+        print(hmac_key.hex())
+        file.write(aes_key)
+        file.write(b"\n")
+        file.write(hmac_key)
+    # with open('../Team-8/tools/secret_build_output.txt', 'rb') as file:
+    #     print(file.read().hex())
+
 
     return aes_key, hmac_key
 
