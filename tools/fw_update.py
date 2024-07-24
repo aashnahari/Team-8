@@ -32,11 +32,11 @@ from util import *
 ser = serial.Serial("/dev/ttyACM0", 115200)
 
 RESP_OK = b"\x00"
-FRAME_SIZE = 256
+FRAME_SIZE = 562
 
 
 def send_metadata(ser, metadata, debug=False):
-    assert(len(metadata) == 4)
+    assert(len(metadata) == 1060)
     version = u16(metadata[:2], endian='little')
     size = u16(metadata[2:], endian='little')
     print(f"Version: {version}\nSize: {size} bytes\n")
@@ -83,16 +83,17 @@ def update(ser, infile, debug):
     with open(infile, "rb") as fp:
         firmware_blob = fp.read()
 
-    metadata = firmware_blob[:4]
-    firmware = firmware_blob[4:]
+    metadata = firmware_blob[:1060]
+    firmware = firmware_blob[1060:-34]
+    end = firware_blob[-34:]
 
     send_metadata(ser, metadata, debug=debug)
 
+    ##EACH FRAME IS 562
     for idx, frame_start in enumerate(range(0, len(firmware), FRAME_SIZE)):
-        data = firmware[frame_start : frame_start + FRAME_SIZE]
+        frame = firmware[frame_start : frame_start + FRAME_SIZE]
 
         # Construct frame.
-        frame = p16(len(data), endian='big') + data
 
         send_frame(ser, frame, debug=debug)
         print(f"Wrote frame {idx} ({len(frame)} bytes)")
@@ -100,7 +101,7 @@ def update(ser, infile, debug):
     print("Done writing firmware.")
 
     # Send a zero length payload to tell the bootlader to finish writing it's page.
-    ser.write(p16(0x0000, endian='big'))
+    ser.write(end)
     resp = ser.read(1)  # Wait for an OK from the bootloader
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded to zero length frame with {}".format(repr(resp)))
