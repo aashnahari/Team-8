@@ -8,6 +8,7 @@ Firmware Bundle-and-Protect Tool
 
 """
 import argparse
+from Crypto.Cipher import AES
 from pwn import *
 
 
@@ -17,7 +18,6 @@ def protect_firmware(infile, outfile, version, message):
     metadata = p16(version, endian='little') + p16(len(firmware), endian='little')  
     
     # put metadata into a frame with 'METADATA'
-    
     version_frame = metadata + message.encode()
     
     # hash it (place holder for now )
