@@ -12,22 +12,57 @@ from pwn import *
 
 
 def protect_firmware(infile, outfile, version, message):
+# FRAME 0: METADATA
+    # packing metadata
+    metadata = p16(version, endian='little') + p16(len(firmware), endian='little')  
+    
+    # put metadata into a frame with 'METADATA'
+    
+    version_frame = metadata + message.encode()
+    
+    #hash it (place holder for now )
+    version_hash = b'\x00\x00'
+    
+    #append hash to frame
+    version_frame = version_frame + version_hash
+
+    # write version frame to outfile (writing this first)
+    with open(outfile, "wb+") as outfile:
+        outfile.write(version_frame)
+
+# FRAME 1: FIRMWARE DATA
     # Load firmware binary from infile
     with open(infile, "rb") as fp:
-        firmware = fp.read()
+        raw_firmware = fp.read()
 
-    # Append null-terminated message to end of firmware
-    firmware_and_message = firmware + message.encode() + b"\00"
+    # encryption of the firmware here
+    firmware = raw_firmware #for now just keeping this as the "encryption step"
+    
+    #split the now encrypted firmware into frames
+    for i in range(0,len(firmware)-1, 20):
+        # split the firmware into chunks of (20 bytes?)
+        chunk = firmware[i:i+20] 
+        #^^^^this definitely isnt how this should be done, need to double check
+        
+        frame_size = p16(len(chunk), endian='little')
+        # hash it
+        data_hash = b'\x01\x01'
 
-    # Pack version and size into two little-endian shorts
-    metadata = p16(version, endian='little') + p16(len(firmware), endian='little')  
+        # add message & hash to firmware frame
+        data_frame = frame_size + chunk + data_hash
 
-    # Append firmware and message to metadata
-    firmware_blob = metadata + firmware_and_message
-
-    # Write firmware blob to outfile
+        #write frames into outfile
+        with open(outfile, "wb+") as outfile:
+            outfile.write(data_frame)
+    
+#FRAME 2: END
+    end_message = b'END'
+    end_hash = b'\x02\x02'
+    end_size = p16(len(end_hash), endian = 'little')
+    end_frame = end_message + end_size+ end_hash
+    
     with open(outfile, "wb+") as outfile:
-        outfile.write(firmware_blob)
+        outfile.write(end_frame)
 
 
 if __name__ == "__main__":
@@ -36,6 +71,8 @@ if __name__ == "__main__":
     parser.add_argument("--outfile", help="Filename for the output firmware.", required=True)
     parser.add_argument("--version", help="Version number of this firmware.", required=True)
     parser.add_argument("--message", help="Release message for this firmware.", required=True)
+    # need to add an argument of the key for encryption --> idk how to do this without exposing 
+    #the key but whatever
     args = parser.parse_args()
 
     protect_firmware(infile=args.infile, outfile=args.outfile, version=int(args.version), message=args.message)

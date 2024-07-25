@@ -76,7 +76,6 @@ void debug_delay_led() {
     GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0x0);
 }
 
-
 int main(void) {
 
     // Enable the GPIO port that is used for the on-board LED.
@@ -108,8 +107,8 @@ int main(void) {
             nl(UART0);
         } else if (instruction == BOOT) {
             uart_write_str(UART0, "B");
-            uart_write_str(UART0, "Booting firmware...\n");
-            boot_firmware();
+            uart_write_str(UART0, "\nHmmm..we're booting firmware...\n");
+            boot_firmware():
         }
     }
 }
@@ -120,7 +119,7 @@ int main(void) {
  */
 void load_firmware(void) {
     int frame_length = 0;
-    int read = 0;
+    int status = 0;
     uint32_t rcv = 0;
 
     uint32_t data_index = 0;
@@ -128,17 +127,21 @@ void load_firmware(void) {
     uint32_t version = 0;
     uint32_t size = 0;
 
+
     // Get version.
     rcv = uart_read(UART0, BLOCKING, &read);
     version = (uint32_t)rcv;
     rcv = uart_read(UART0, BLOCKING, &read);
     version |= (uint32_t)rcv << 8;
 
-    // Get size.
+    // Get size (overall of firmware).
     rcv = uart_read(UART0, BLOCKING, &read);
     size = (uint32_t)rcv;
     rcv = uart_read(UART0, BLOCKING, &read);
     size |= (uint32_t)rcv << 8;
+
+// CHECK/VERIFY SIGNATURE FIRST BEFORE ANY OTHER CHECKS
+
 
     // Compare to old version and abort if older (note special case for version 0).
     // If no metadata available (0xFFFF), accept version 1
@@ -163,23 +166,29 @@ void load_firmware(void) {
 
     uart_write(UART0, OK); // Acknowledge the metadata.
 
-    /* Loop here until you can get all your characters and stuff */
+
+// LOOP TO GET ALL THE DATA FRAMES
     while (1) {
 
         // Get two bytes for the length.
         rcv = uart_read(UART0, BLOCKING, &read);
+        if (frame_length == b'END') {
+                //VERIFY HASH IN HERE SOMEWHERE??
+                uart_write(UART0, OK);
+                break;
+        }
         frame_length = (int)rcv << 8;
         rcv = uart_read(UART0, BLOCKING, &read);
         frame_length += (int)rcv;
-
-        // Get the number of bytes specified
+        
+        // Read specified number of bytes into buffer
         for (int i = 0; i < frame_length; ++i) {
             data[data_index] = uart_read(UART0, BLOCKING, &read);
             data_index += 1;
-        } // for
+        } 
 
         // If we filed our page buffer, program it
-        if (data_index == FLASH_PAGESIZE || frame_length == 0) {
+        if (data_index == FLASH_PAGESIZE) {
             // Try to write flash and check for error
             if (program_flash((uint8_t *) page_addr, data, data_index)) {
                 uart_write(UART0, ERROR); // Reject the firmware
@@ -190,17 +199,21 @@ void load_firmware(void) {
             // Update to next page
             page_addr += FLASH_PAGESIZE;
             data_index = 0;
+        }
 
-            // If at end of firmware, go to main
-            if (frame_length == 0) {
-                uart_write(UART0, OK);
-                break;
-            }
-        } // if
+          //GET THE SIGNATURE (how long will it be??)
+        for (int j = 0; j < 100; ++j){
+            signature[j] = uart_read(UART, BLOCKING &read);
+        }
+
+    //DECRYPT THE FIRMWARE, GET THE KEY
+
+    //VERIFY THE SIGNATURE!!!!!!!!!
 
         uart_write(UART0, OK); // Acknowledge the frame.
-    } // while(1)
-}
+        
+    }
+    }
 
 /*
  * Program a stream of bytes to the flash.
