@@ -35,6 +35,10 @@ def protect_firmware(infile, outfile, version, message):
     with open(infile, "rb") as fp:
         raw_firmware = fp.read()
 
+    # pad the firmware here
+    while len(raw_firmware) % 512 != 0:
+        raw_firmware += b'0x00'
+        
     # encryption of the firmware here
     aes_crypt = AES.new(KEY, AES.MODE_CBC, iv=IV) # KEY, IV placeholders for actual key, iv
     raw_firmware = AES.encrypt(raw_firmware)
