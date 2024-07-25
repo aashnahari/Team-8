@@ -13,6 +13,8 @@ the build outputs into the host tools directory for programming.
 import os
 import pathlib
 import subprocess
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent.absolute()
 BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
@@ -29,6 +31,14 @@ def make_bootloader() -> bool:
     # Return True if make returned 0, otherwise return False.
     return status == 0
 
+# input: unencrypted AES key
+# output: RSA key pair and encrypted AES key
+# output format: [[public key, private key], encrypted AES key]
+def generate_and_encrypt(unenc_key):
+    rsa_private = RSA.generate(2048)
+    rsa_public = rsa_private.public_key()
+    enc_aes = rsa_public.encrypt(unenc_key)
+    return [[rsa_public, rsa_private], enc_aes]
 
 if __name__ == "__main__":
     make_bootloader()
