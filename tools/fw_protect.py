@@ -38,14 +38,14 @@ def protect_firmware(infile, outfile, version, message):
     # pad the firmware here
     while len(raw_firmware) % 512 != 0:
         raw_firmware += b'0x00'
-        
+
     # encryption of the firmware here
     aes_crypt = AES.new(KEY, AES.MODE_CBC, iv=IV) # KEY, IV placeholders for actual key, iv
     raw_firmware = AES.encrypt(raw_firmware)
 
     # split the now encrypted firmware into frames
-    for i in range(0,len(firmware)-1, 256):
-        # split the firmware into chunks of 256
+    for i in range(0,len(firmware)-1, 20):
+        # split the firmware into chunks of (20 bytes?)
         chunk = firmware[i:i+20] 
         #^^^^this definitely isnt how this should be done, need to double check
         
