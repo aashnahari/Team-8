@@ -9,6 +9,9 @@ Firmware Bundle-and-Protect Tool
 """
 import argparse
 from Crypto.Cipher import AES
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.PublicKey import RSA
+from Crypto.Random import get_random_bytes
 from pwn import *
 
 
@@ -39,8 +42,17 @@ def protect_firmware(infile, outfile, version, message):
     while len(raw_firmware) % 512 != 0:
         raw_firmware += b'0x00'
 
+    # read key from secrets file here, decrypt, save to variable
+    with open("./secret_build_output.txt", "rb") as secret:
+        secret_raw = secret.read()
+        enc_aes_key = secret_raw[PLACEHOLDERVAL:PLACEHOLDERVAL + 32] # replace with location of enc. AES key relative to start
+        rsa_private = secret_raw[PLACEHOLDERVAL2:PLACEHOLDERVAL2 + 256] # replace with location of RSA priv. key rel. to start
+        rsa_dec_object = PKCS1_OAEP.new(rsa_private)
+        usable_aes_key = rsa_dec_object.decrypt(enc_aes_key)
+
     # encryption of the firmware here
-    aes_crypt = AES.new(KEY, AES.MODE_CBC, iv=IV) # KEY, IV placeholders for actual key, iv
+    iv = get_random_bytes(AES.block_size) # generates random iv
+    aes_crypt = AES.new(usable_aes_key, AES.MODE_CBC, iv)
     raw_firmware = AES.encrypt(raw_firmware)
 
     # split the now encrypted firmware into frames
