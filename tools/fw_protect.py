@@ -20,9 +20,11 @@ def protect_firmware(infile, outfile, version, message):
     # Packing metadata
     metadata = p16(version, endian='little') + p16(len(firmware), endian='little')
     version_frame = metadata + message.encode()
+    #PAD MESSAGE TO BE 1024 BYTES
 
     # Hash it (placeholder for now)
     version_hash = b'\x00\x00'
+    print(len(version_frame))
 
     # Append hash to frame
     version_frame = version_frame + version_hash
@@ -30,6 +32,7 @@ def protect_firmware(infile, outfile, version, message):
     # Write version frame to outfile (writing this first)
     with open(outfile, "wb+") as out_fp:
         out_fp.write(version_frame)
+
 
     # FRAME 1: FIRMWARE DATA
     # Encryption of the firmware here
@@ -40,7 +43,7 @@ def protect_firmware(infile, outfile, version, message):
     for i in range(0, len(firmware), 20):
         # Split the firmware into chunks of 20 bytes
         chunk = firmware[i:i + 20]
-        print_hex(chunk)
+        #print_hex(chunk)
 
         frame_size = p16(len(chunk), endian='little')
         # Hash it
@@ -48,7 +51,7 @@ def protect_firmware(infile, outfile, version, message):
 
         # Add message & hash to firmware frame
         data_frame = iv + frame_size + chunk + data_hash
-        print_hex(data_frame)
+        #print_hex(data_frame)
 
         # Write frames into outfile
         with open(outfile, "ab+") as out_fp:
@@ -64,9 +67,6 @@ def protect_firmware(infile, outfile, version, message):
     with open(outfile, "ab+") as out_fp:
         out_fp.write(end_frame)
 
-    # Read and print the final output file
-    with open(outfile, "rb") as out_fp:
-        print_hex(out_fp.read().hex())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Firmware Update Tool")
