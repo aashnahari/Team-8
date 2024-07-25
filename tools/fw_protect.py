@@ -47,8 +47,8 @@ def protect_firmware(infile, outfile, version, message):
     for i in range(0,len(firmware)-1, 20):
         # split the firmware into chunks of (20 bytes?)
         chunk = firmware[i:i+20] 
+
         #^^^^this definitely isnt how this should be done, need to double check
-        
         frame_size = p16(len(chunk), endian='little')
         # hash it
         data_hash = b'\x01\x01'
@@ -76,8 +76,9 @@ if __name__ == "__main__":
     parser.add_argument("--outfile", help="Filename for the output firmware.", required=True)
     parser.add_argument("--version", help="Version number of this firmware.", required=True)
     parser.add_argument("--message", help="Release message for this firmware.", required=True)
+
     # need to add an argument of the key for encryption --> idk how to do this without exposing 
-    #the key but whatever
+    # the key but whatever
     args = parser.parse_args()
 
     protect_firmware(infile=args.infile, outfile=args.outfile, version=int(args.version), message=args.message)
