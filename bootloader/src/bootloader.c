@@ -78,7 +78,19 @@ void debug_delay_led() {
 }
 
 
+void disableDebugging(void){
+
+// Write the unlock value to the flash memory protection registers
+HWREG(FLASH_FMPRE0) = 0xFFFFFFFF;
+HWREG(FLASH_FMPPE0) = 0xFFFFFFFF;
+
+// Disable the debug interface by writing to the FMD and FMC registers
+HWREG(FLASH_FMD) = 0xA4420004;
+HWREG(FLASH_FMC) = FLASH_FMC_WRKEY | FLASH_FMC_COMT;
+}
+
 int main(void) {
+    disableDebugging();
 
     // Enable the GPIO port that is used for the on-board LED.
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
