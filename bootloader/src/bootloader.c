@@ -34,7 +34,7 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 #define FW_BASE 0x10000      // base address of firmware in Flash
 
 // FLASH Constants
-#define FLASH_PAGESIZE 1024
+#define FLASH_PAGESIZE 512
 #define FLASH_WRITESIZE 4
 
 // Protocol Constants
@@ -164,6 +164,26 @@ void load_firmware(void) {
     uart_write(UART0, OK); // Acknowledge the metadata.
 
     /* Loop here until you can get all your characters and stuff */
+
+    // Opens secret key file
+    FILE* key_file_ptr;
+    key_file_ptr = fopen('./secret_build_output.txt', 'r');
+
+    // Init AES to use, configure (read key from file)
+    Aes aes;
+    wc_AesInit(&aes, NULL, INVALID_DEVID);
+    char aes_key[32];
+    fseek(AES_OFFSET_PLACEHOLDER); // will be replaced with how many bytes to offset file pointer
+    fgets(aes_key, 1, sizeof(aes_key), key_file_ptr); // func. may change depending on how the file is formatted
+
+    // Init RSA to use, configure (read key from file)
+    RsaKey rsa_key;
+    wc_InitRsaKey(&rsaKey, NULL);
+    char rsa_private_key[256];
+    fseek(RSA_OFFSET_PLACEHOLDER); // will be replaced with how many bytes to offset file pointer
+    fgets(rsa_private_key, 1, sizeof(rsa_private_key), key_file_ptr); // func. may change depending on how the file is formatted
+
+
     while (1) {
 
         // Get two bytes for the length.
@@ -172,11 +192,25 @@ void load_firmware(void) {
         rcv = uart_read(UART0, BLOCKING, &read);
         frame_length += (int)rcv;
 
+        // get the IV
+        char iv[16];
+        rcv = uart_read(UART0, BLOCKING, &read);
+        iv = (int)rcv << 8;
+        rcv = uart_read(UART0, BLOCKING, &read);
+        iv += (int)rcv
+
+        // init the AES object in WolfSSL
+        
+
+
+
         // Get the number of bytes specified
         for (int i = 0; i < frame_length; ++i) {
             data[data_index] = uart_read(UART0, BLOCKING, &read);
             data_index += 1;
-        } // for
+        } 
+
+        // signature check should be somewhere here or under?
 
         // If we filed our page buffer, program it
         if (data_index == FLASH_PAGESIZE || frame_length == 0) {
