@@ -11,7 +11,7 @@ from pwn import *
 from util import *
 
 def protect_firmware(infile, outfile, version, message):
-    # FRAME 0: METADATA
+# FRAME 0: METADATA
     # Load firmware binary from infile
     with open(infile, "rb") as fp:
         raw_firmware = fp.read()
@@ -34,32 +34,32 @@ def protect_firmware(infile, outfile, version, message):
         out_fp.write(version_frame)
 
 
-    # FRAME 1: FIRMWARE DATA
-    # Encryption of the firmware here
-    # For now just keeping this as the "encryption step"
-    iv = b'6576'
+# FRAME 1: FIRMWARE DATA
+    
+    # encryption (including iv generation) placeholder
+    iv = b'6576' # delete when encryption is incorportated
 
     # Split the now encrypted firmware into frames
     for i in range(0, len(firmware), 20):
         # Split the firmware into chunks of 20 bytes
         chunk = firmware[i:i + 20]
-        #print_hex(chunk)
-
+        
         frame_size = p16(len(chunk), endian='little')
+
         # Hash it
-        data_hash = b'\x01\x01'
+        data_hash = b'\x01\x01' #placeholder
 
         # Add message & hash to firmware frame
         data_frame = iv + frame_size + chunk + data_hash
-        #print_hex(data_frame)
+        
 
         # Write frames into outfile
         with open(outfile, "ab+") as out_fp:
             out_fp.write(data_frame)
 
-    # FRAME 2: END
-    end_message = b'END'
-    end_hash = b'\x02\x02'
+# FRAME 2: END
+    end_message = b'\x00\x00'
+    end_hash = b'\x02\x02' #placeholder
     end_size = p16(len(end_hash), endian='little')
     end_frame = end_message + end_size + end_hash
 

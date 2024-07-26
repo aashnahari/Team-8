@@ -36,6 +36,9 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 // FLASH Constants
 #define FLASH_PAGESIZE 1024
 #define FLASH_WRITESIZE 4
+#define MESSAGE_SIZE 1024
+#define SIGNATURE_SIZE 32
+#define IV_SIZE 16
 
 // Protocol Constants
 #define OK ((unsigned char)0x00)
@@ -50,6 +53,9 @@ uint8_t * fw_release_message_address;
 
 // Firmware Buffer
 unsigned char data[FLASH_PAGESIZE];
+unsigned char message[MESSAGE_SIZE];
+unsigned char signature[SIGNATURE_SIZE];
+unsigned char iv[IV_SIZE];
 
 // Delay to allow time to connect GDB
 // green LED as visual indicator of when this function is running
@@ -108,7 +114,7 @@ int main(void) {
         } else if (instruction == BOOT) {
             uart_write_str(UART0, "B");
             uart_write_str(UART0, "\nHmmm..we're booting firmware...\n");
-            boot_firmware():
+            boot_firmware();
         }
     }
 }
@@ -127,20 +133,28 @@ void load_firmware(void) {
     uint32_t version = 0;
     uint32_t size = 0;
 
+//READING FRAME 0 (VERSION_FRAME)
 
     // Get version.
-    rcv = uart_read(UART0, BLOCKING, &read);
+    rcv = uart_read(UART0, BLOCKING, &status);
     version = (uint32_t)rcv;
-    rcv = uart_read(UART0, BLOCKING, &read);
+    rcv = uart_read(UART0, BLOCKING, &status);
     version |= (uint32_t)rcv << 8;
 
     // Get size (overall of firmware).
-    rcv = uart_read(UART0, BLOCKING, &read);
+    rcv = uart_read(UART0, BLOCKING, &status);
     size = (uint32_t)rcv;
-    rcv = uart_read(UART0, BLOCKING, &read);
+    rcv = uart_read(UART0, BLOCKING, &status);
     size |= (uint32_t)rcv << 8;
 
-// CHECK/VERIFY SIGNATURE FIRST BEFORE ANY OTHER CHECKS
+    for (int j = 0; j < MESSAGE_SIZE; ++j) {
+        message[j] = uart_read(UART0, BLOCKING, &status);
+    }
+
+    for (int k = 0; k < SIGNATURE_SIZE; ++k){
+        signature[k] = uart_read(UART0, BLOCKING, &status);
+    }
+    // signature verification placeholder
 
 
     // Compare to old version and abort if older (note special case for version 0).
@@ -159,10 +173,13 @@ void load_firmware(void) {
         version = old_version;
     }
 
-    // Write new firmware size and version to Flash
+
+// WRITE INFO TO FLASH!!!
     // Create 32 bit word for flash programming, version is at lower address, size is at higher address
     uint32_t metadata = ((size & 0xFFFF) << 16) | (version & 0xFFFF);
     program_flash((uint8_t *) METADATA_BASE, (uint8_t *)(&metadata), 4);
+    //writing message to flash
+    program_flash((uint8_t *)(METADATA_BASE + 4), message, MESSAGE_SIZE);
 
     uart_write(UART0, OK); // Acknowledge the metadata.
 
@@ -171,25 +188,36 @@ void load_firmware(void) {
     while (1) {
 
         // Get two bytes for the length.
-        rcv = uart_read(UART0, BLOCKING, &read);
-        if (frame_length == b'END') {
+        rcv = uart_read(UART0, BLOCKING, &status);
+        frame_length = (int)rcv << 8;
+        rcv = uart_read(UART0, BLOCKING, &status);
+        frame_length += (int)rcv;
+        if (frame_length == 0x0000) {
                 //VERIFY HASH IN HERE SOMEWHERE??
                 uart_write(UART0, OK);
                 break;
         }
-        frame_length = (int)rcv << 8;
-        rcv = uart_read(UART0, BLOCKING, &read);
-        frame_length += (int)rcv;
         
-        // Read specified number of bytes into buffer
-        for (int i = 0; i < frame_length; ++i) {
-            data[data_index] = uart_read(UART0, BLOCKING, &read);
+        // Read each part of the frame into their respective buffers
+        for (int a = 0;a < frame_length; ++a) {
+            data[data_index] = uart_read(UART0, BLOCKING, &status);
             data_index += 1;
         } 
 
+        for (int b = 0; b < IV_SIZE; ++b){
+            iv[b] = uart_read(UART0, BLOCKING, &status);
+        }
+
+        for (int c = 0; c < SIGNATURE_SIZE; ++c){
+            signature[c] = uart_read(UART0, BLOCKING, &status);
+        }
+
+        //VERIFY THE SIGNATURE
+
+
         // If we filed our page buffer, program it
         if (data_index == FLASH_PAGESIZE) {
-            // Try to write flash and check for error
+            // writing the encrypted data to flash
             if (program_flash((uint8_t *) page_addr, data, data_index)) {
                 uart_write(UART0, ERROR); // Reject the firmware
                 SysCtlReset();            // Reset device
@@ -201,17 +229,11 @@ void load_firmware(void) {
             data_index = 0;
         }
 
-          //GET THE SIGNATURE (how long will it be??)
-        for (int j = 0; j < 100; ++j){
-            signature[j] = uart_read(UART, BLOCKING &read);
-        }
-
     //DECRYPT THE FIRMWARE, GET THE KEY
 
     //VERIFY THE SIGNATURE!!!!!!!!!
 
         uart_write(UART0, OK); // Acknowledge the frame.
-        
     }
     }
 
@@ -261,8 +283,10 @@ long program_flash(void* page_addr, unsigned char * data, unsigned int data_len)
     }
 }
 
+
 void boot_firmware(void) {
-    // Check if firmware loaded
+//REVERIFY THE SIGNATURE (SECURE BOOT) ?????? what to verify to do the secure boot
+    // Check if firmware loaded --> what even is this code....
     int fw_present = 0;
     for (uint8_t* i = (uint8_t*) FW_BASE; i < (uint8_t*) FW_BASE + 20; i++) {
         if (*i != 0xFF) {
@@ -275,10 +299,10 @@ void boot_firmware(void) {
         SysCtlReset();            // Reset device
         return;
     }
-
+//DECRYPT THE FIRMWARE HERE
     // compute the release message address, and then print it
     uint16_t fw_size = *fw_size_address;
-    fw_release_message_address = (uint8_t *)(FW_BASE + fw_size);
+    fw_release_message_address = (uint8_t *)(METADATA_BASE + 4);
     uart_write_str(UART0, (char *)fw_release_message_address);
 
     // Boot the firmware
