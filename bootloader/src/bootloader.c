@@ -48,9 +48,11 @@ uint16_t * fw_version_address = (uint16_t *)METADATA_BASE;
 uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2);
 uint8_t * fw_release_message_address;
 
-// Firmware Buffer
-unsigned char data[FLASH_PAGESIZE];
+// Encrypted Firmware Buffer
+unsigned char encrypted_data[FLASH_PAGESIZE];
 
+// Unencrypted Firmware Buffer
+unsigned char unencrypted_data[FLASH_PAGESIZE];
 // Delay to allow time to connect GDB
 // green LED as visual indicator of when this function is running
 void debug_delay_led() {
@@ -172,16 +174,18 @@ void load_firmware(void) {
     // Init AES to use, configure (read key from file)
     Aes aes;
     wc_AesInit(&aes, NULL, INVALID_DEVID);
+    char aes_encrypted_key[256];
     char aes_key[32];
     fseek(AES_OFFSET_PLACEHOLDER); // will be replaced with how many bytes to offset file pointer
-    fgets(aes_key, 1, sizeof(aes_key), key_file_ptr); // func. may change depending on how the file is formatted
+    fgets(aes_encrypted_key, 1, sizeof(aes_key), key_file_ptr); // func. may change depending on how the file is formatted
 
     // Init RSA to use, configure (read key from file)
-    RsaKey rsa_key;
+    RsaKey rsa_private_key;
     wc_InitRsaKey(&rsaKey, NULL);
-    char rsa_private_key[256];
+    char rsa_private_key_buf[256];
     fseek(RSA_OFFSET_PLACEHOLDER); // will be replaced with how many bytes to offset file pointer
-    fgets(rsa_private_key, 1, sizeof(rsa_private_key), key_file_ptr); // func. may change depending on how the file is formatted
+    fgets(rsa_private_key_buf, 1, sizeof(rsa_private_key_buf), key_file_ptr); // func. may change depending on how the file is formatted
+    wc_RsaPrivateKeyDecode(rsa_private_key_buf, 0, &rsa_private_key, sizeof(rsa_private_key_buf));
 
 
     while (1) {
@@ -199,16 +203,20 @@ void load_firmware(void) {
         rcv = uart_read(UART0, BLOCKING, &read);
         iv += (int)rcv
 
-        // init the AES object in WolfSSL
-        
+        // decrypt AES key
+        wc_RsaPrivateDecrypt(aes_encrypted_key, 256, aes_key, 32, &rsa_private_key);
 
-
+        // init the AES object in WolfSSL with now decrypted key
+        wc_AesSetKey(&aes, aes_key, 32, iv, AES_DECRYPTION);
 
         // Get the number of bytes specified
         for (int i = 0; i < frame_length; ++i) {
             data[data_index] = uart_read(UART0, BLOCKING, &read);
             data_index += 1;
-        } 
+        }
+
+        // decrypt data frame with AES
+        wc_AesCbcDecrypt(&aes, unencrypted_data, encrypted_data, 32);
 
         // signature check should be somewhere here or under?
 
