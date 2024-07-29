@@ -16,8 +16,57 @@ import subprocess
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 
+import cryptography
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+
+
 REPO_ROOT = pathlib.Path(__file__).parent.parent.absolute()
 BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
+ROOT_KEY = b"hi"
+
+
+def key_derivation(root_key):
+    salt = os.urandom(16)
+    info1 = b"AES key"
+    info2 = b"HMAC key"
+    backend = default_backend()
+
+    ikm = root_key
+
+    hkdf = HKDF(
+    algorithm=hashes.SHA256(),
+    length=len(ROOT_KEY),  # Length of the keying material in bytes
+    salt=salt,
+    info=info1,
+    backend=backend)
+    aes_key = hkdf.derive(ikm)
+
+    hkdf = HKDF(
+    algorithm=hashes.SHA256(),
+    length=len(ROOT_KEY),  # Length of the keying material in bytes
+    salt=salt,
+    info=info2,
+    backend=backend)
+    
+
+    hmac_key = hkdf.derive(ikm)
+    with open('../Team-8/tools/secret_build_output.txt', 'wb') as file:
+        print(aes_key.hex())
+        print(hmac_key.hex())
+        file.write(aes_key)
+        file.write(b"\n")
+        file.write(hmac_key)
+    # with open('../Team-8/tools/secret_build_output.txt', 'rb') as file:
+    #     print(file.read().hex())
+
+
+    return aes_key, hmac_key
+
+
+
+
 
 
 def make_bootloader() -> bool:
@@ -42,3 +91,6 @@ def generate_and_encrypt(unenc_key):
 
 if __name__ == "__main__":
     make_bootloader()
+
+    key_derivation(ROOT_KEY)
+    #make_bootloader()
