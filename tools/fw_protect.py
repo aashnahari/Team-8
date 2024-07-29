@@ -65,7 +65,7 @@ def protect_firmware(infile, outfile, version, message):
     iv = get_random_bytes(AES.block_size) # generates random iv
     aes_crypt = AES.new(usable_aes_key, AES.MODE_CBC, iv)
     raw_firmware = aes_crypt.encrypt(raw_firmware)
-    
+
     # split the now encrypted firmware into frames
     for i in range(0,len(firmware)-1, 20):
         # split the firmware into chunks of (20 bytes?)
@@ -85,9 +85,8 @@ def protect_firmware(infile, outfile, version, message):
     
 #FRAME 2: END
     end_message = b'\x00\x00'
-    end_hash = b'\x02\x02'
-    end_size = p16(len(end_hash), endian = 'little')
-    end_frame = end_message + end_size+ end_hash
+    
+    end_frame = end_message + sign(secret_hmac_key, end_message)
     
     with open(outfile, "wb+") as outfile:
         outfile.write(end_frame)
