@@ -178,7 +178,7 @@ void load_firmware(void) {
     // Create 32 bit word for flash programming, version is at lower address, size is at higher address
     uint32_t metadata = ((size & 0xFFFF) << 16) | (version & 0xFFFF);
     program_flash((uint8_t *) METADATA_BASE, (uint8_t *)(&metadata), 4);
-    //writing message to flash
+    //also writing message to flash
     program_flash((uint8_t *)(METADATA_BASE + 4), message, MESSAGE_SIZE);
 
     uart_write(UART0, OK); // Acknowledge the metadata.
@@ -193,7 +193,7 @@ void load_firmware(void) {
         rcv = uart_read(UART0, BLOCKING, &status);
         frame_length += (int)rcv;
         if (frame_length == 0x0000) {
-                //VERIFY HASH IN HERE SOMEWHERE??
+                //verify signature in here first, then send ok
                 uart_write(UART0, OK);
                 break;
         }
@@ -240,7 +240,7 @@ void load_firmware(void) {
 /*
  * Program a stream of bytes to the flash.
  * This function takes the starting address of a 1KB page, a pointer to the
- * data to write, and the number of byets to write.
+ * data to write, and the number of bytes to write.
  *
  * This functions performs an erase of the specified flash page before writing
  * the data.

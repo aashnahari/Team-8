@@ -19,17 +19,29 @@ def protect_firmware(infile, outfile, version, message):
 
     # Packing metadata
     metadata = p16(version, endian='little') + p16(len(firmware), endian='little')
-    version_frame = metadata + message.encode()
-    #PAD MESSAGE TO BE 1024 BYTES
 
-    # Hash it (placeholder for now)
-    version_hash = b'\x00\x00'
-    print(len(version_frame))
+    # padding message to be 1024 bytes (biggest size possible)
+    message_length = len(message.encode())
+    if message_length < 1024:
+        # Pad message with zero bytes if it's shorter than 1024 bytes
+        padded_message = message.encode() + b'\x00' * (1024 - message_length)
+    elif message_length == 1024:
+        padded_message = message.encode()
+    else:
+        # If the message is longer than 1024 bytes, truncate it (but this shouldn't happen since the 
+        # parameters for the challenge said that the largest message to handle would be 1 kB)
+        padded_message = message.encode()[:1024]
 
-    # Append hash to frame
-    version_frame = version_frame + version_hash
+    # Create version frame
+    version_frame = metadata + padded_message
 
-    # Write version frame to outfile (writing this first)
+    # sign it (placeholder for now)
+    version_sig = b'\x00' * 32
+
+    # Append signature to frame
+    version_frame = version_frame + version_sig
+
+    # Write version frame to outfile (writing frame 0 first specifically)
     with open(outfile, "wb+") as out_fp:
         out_fp.write(version_frame)
 
@@ -40,28 +52,27 @@ def protect_firmware(infile, outfile, version, message):
     iv = b'6576' # delete when encryption is incorportated
 
     # Split the now encrypted firmware into frames
-    for i in range(0, len(firmware), 20):
-        # Split the firmware into chunks of 20 bytes
-        chunk = firmware[i:i + 20]
+    for i in range(0, len(firmware), 512):
+        # Split the firmware into chunks of 512 bytes
+        chunk = firmware[i:i + 512]
         
-        frame_size = p16(len(chunk), endian='little')
+        #pack the chunk size appropriately for writing to serial
+        chunk_size = p16(len(chunk), endian='little')
 
-        # Hash it
-        data_hash = b'\x01\x01' #placeholder
+        # sign the frame
+        data_sig = b'\x00' * 32 #placeholder
 
-        # Add message & hash to firmware frame
-        data_frame = iv + frame_size + chunk + data_hash
-        
+        # assemble the frame
+        data_frame = iv + chunk_size + chunk + data_sig 
 
-        # Write frames into outfile
+        # Write frame into outfile
         with open(outfile, "ab+") as out_fp:
             out_fp.write(data_frame)
 
 # FRAME 2: END
-    end_message = b'\x00\x00'
-    end_hash = b'\x02\x02' #placeholder
-    end_size = p16(len(end_hash), endian='little')
-    end_frame = end_message + end_size + end_hash
+    end_message = b'\x00\x00' # NOT A PLACEHOLDER, DO NOT CHANGE
+    end_sig = b'\x00' * 32
+    end_frame = end_message + end_sig
 
     # Append end frame to outfile
     with open(outfile, "ab+") as out_fp:
