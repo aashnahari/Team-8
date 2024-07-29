@@ -12,7 +12,9 @@ from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 from pwn import *
+from util import *
 from Crypto.Hash import HMAC, SHA256
+
 def sign(ky, frame_data):  #call 'sign' whenever need to sign
     #-----------------------------------------------------------------------
     signature = (HMAC.new(ky, frame_data, digestmod=SHA256)).digest()
@@ -46,8 +48,8 @@ def protect_firmware(infile, outfile, version, message):
     # Create version frame
     version_frame = metadata + padded_message
 
-# sign it (placeholder for now)
-    version_sig = b'\x00' * 32
+    # create signature for frame
+    version_sig = sign(secret_hmac_key, version_frame)
 
     # Append signature to frame
     version_frame = version_frame + version_sig
@@ -75,6 +77,7 @@ def protect_firmware(infile, outfile, version, message):
 
     # encryption of the firmware here
     iv = get_random_bytes(AES.block_size) # generates random iv
+    print_hex(iv)
     aes_crypt = AES.new(usable_aes_key, AES.MODE_CBC, iv)
     firmware = aes_crypt.encrypt(raw_firmware)
 
@@ -86,8 +89,8 @@ def protect_firmware(infile, outfile, version, message):
         #pack the chunk size appropriately for writing to serial
         chunk_size = p16(len(chunk), endian='little')
 
-# SIGNATURE
-        data_sig = b'\x00' * 32 #placeholder
+        # SIGNATURE
+        data_sig = sign(secret_hmac_key, chunk)
 
         # assemble the frame
         data_frame = iv + chunk_size + chunk + data_sig 
@@ -99,7 +102,7 @@ def protect_firmware(infile, outfile, version, message):
 # FRAME 2: END
     end_message = b'\x00\x00'
     
-    end_sig= sign(secret_hmac_key, end_message)
+    end_sig = sign(secret_hmac_key, end_message)
     
     end_frame = end_message + end_sig
 
@@ -117,4 +120,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # protect_firmware(infile=args.infile, outfile=args.outfile, version=int(args.version), message=args.message)
+    protect_firmware(infile=args.infile, outfile=args.outfile, version=int(args.version), message=args.message)

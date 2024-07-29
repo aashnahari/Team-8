@@ -1,6 +1,5 @@
-/usr/bin/env python
+#!/usr/bin/env python
 
-# hey, it pushed!
 # Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED
 # Approved for public release. Distribution unlimited 23-02181-25.
 
@@ -10,6 +9,7 @@ Bootloader Build Tool
 This tool is responsible for building the bootloader from source and copying
 the build outputs into the host tools directory for programming.
 """
+from util import *
 import os
 import pathlib
 import subprocess
@@ -26,13 +26,21 @@ REPO_ROOT = pathlib.Path(__file__).parent.parent.absolute()
 BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
 ROOT_KEY = b"hi"
 
+
 def create_header_file(aes, hmac, rsaPriv):
     with open('../Team-8/tools/header.h', 'w') as header_file:
         header_file.write("#ifndef HEADER_H\n")
         header_file.write("#define HEADER_H\n\n")
-        header_file.write(f"#define ENC_AES_KEY \"{aes}\"\n")
-        header_file.write(f"#define HMAC_KEY \"{hmac}\"\n\n")
-        header_file.write(f"#define RSA_PRIVATE_KEY \"{rsaPriv}\"\n\n\n")
+
+        # Convert binary data to hex string and format for C
+        aes_hex = bytes_to_hex_string(aes)
+        hmac_hex = bytes_to_hex_string(hmac)
+        rsa_priv_hex = bytes_to_hex_string(rsaPriv)
+
+        header_file.write(f"#define ENC_AES_KEY {{ {', '.join(f'0x{aes_hex[i:i+2]}' for i in range(0, len(aes_hex), 2))} }}\n")
+        header_file.write(f"#define HMAC_KEY {{ {', '.join(f'0x{hmac_hex[i:i+2]}' for i in range(0, len(hmac_hex), 2))} }}\n")
+        header_file.write(f"#define RSA_PRIVATE_KEY {{ {', '.join(f'0x{rsa_priv_hex[i:i+2]}' for i in range(0, len(rsa_priv_hex), 2))} }}\n\n")
+
         header_file.write("#endif // HEADER_H\n")
 
 
@@ -80,8 +88,6 @@ def key_derivation(root_key):
         file.write(b"\n")
     # with open('../Team-8/tools/secret_build_output.txt', 'rb') as file:
     #     print(file.read().hex())
-       
-
 
     return aes_key_enc, hmac_key, rsa_private
 
@@ -112,9 +118,7 @@ def generate_and_encrypt(unenc_key):
     return [[rsa_public, rsa_private], enc_aes]
 
 if __name__ == "__main__":
-    make_bootloader()
-
     aes_enc, hmac, rsaPriv = key_derivation(ROOT_KEY)
     create_header_file(aes_enc, hmac, rsaPriv)
+    make_bootloader()
     delete_header_file("../Team-8/tools/header.h")
-    #make_bootloader()
