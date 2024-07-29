@@ -107,7 +107,8 @@ def make_bootloader() -> bool:
 def generate_and_encrypt(unenc_key):
     rsa_private = RSA.generate(2048)
     rsa_public = rsa_private.public_key()
-    enc_aes = rsa_public.encrypt(unenc_key)
+    cipher = PKCS1_OAEP.new(rsa_public)
+    enc_aes = cipher.encrypt(unenc_key)
     return [[rsa_public, rsa_private], enc_aes]
 
 if __name__ == "__main__":
