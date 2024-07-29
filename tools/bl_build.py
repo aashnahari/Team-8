@@ -82,9 +82,9 @@ def key_derivation(root_key):
         file.write(b"\n")
         file.write(hmac_key)
         file.write(b"\n")
-        file.write(rsa_private)
+        file.write(rsa_private.export_key())
         file.write(b"\n")
-        file.write(rsa_public)
+        file.write(rsa_public.export_key())
         file.write(b"\n")
     # with open('../Team-8/tools/secret_build_output.txt', 'rb') as file:
     #     print(file.read().hex())
