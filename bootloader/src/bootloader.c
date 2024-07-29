@@ -142,26 +142,38 @@ int main(void) {
 
 /// ------------------------------------------------------------------- CHANGES
 bool verify_hmac(uint8_t *sig, uint8_t *ky, uint8_t *msg){   //function for hmac verifying
-    uint8_t hmac_result[WC_MAX_DIGEST_SIZE];
+    uint8_t hmac_result[32];
+    size_t msg_len = sizeof(msg)
     Hmac hmac;
-    wc_HmacInit(&hmac);
-    if (wc_HmacSetKey(&hmac, WC_SHA256, ky, 32) != 0){
+    
+    // Initialize HMAC
+    wc_HmacInit(&hmac, NULL, 0);
+
+    // Set HMAC key
+    if (wc_HmacSetKey(&hmac, WC_SHA256, ky, 32) != 0) {
         perror("wc_HmacSetKey failed");
         return false;
-        
     }
-    if (wc_HmacUpdate(&hmac, msg, sizeof(msg)) != 0){
+    
+    // Update HMAC with message
+    if (wc_HmacUpdate(&hmac, msg, msg_len) != 0) {
         perror("wc_HmacUpdate failed");
+        wc_HmacFree(&hmac);
         return false;
     }
 
+    // Finalize HMAC calculation
     if (wc_HmacFinal(&hmac, hmac_result) != 0) {
         perror("wc_HmacFinal failed");
+        wc_HmacFree(&hmac);
         return false;
     }
 
-    int hmac_len = wc_HmacGetSize(&hmac);
-    if (sizeof(sig) != hmac_len || memcmp(hmac_result, sig, hmac_len) != 0) {
+    // Free HMAC context  
+    wc_HmacFree(&hmac);
+
+    // Compare calculated HMAC with provided signature
+    if (32 != wc_HmacGetSize(&hmac) || memcmp(hmac_result, sig, 32) != 0) {
         return false;
     }  
 

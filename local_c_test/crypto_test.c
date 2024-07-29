@@ -20,29 +20,41 @@ void print_hex(const char *title, const uint8_t *data, size_t len) {
     printf("\n");
 }
 
-bool verify_hmac(const uint8_t *key, const uint8_t *message, size_t message_len, const uint8_t *expected_hmac) {
-    uint8_t computed_hmac[HMAC_SIZE];
+bool verify_hmac(uint8_t *sig, uint8_t *ky, uint8_t *msg){   //function for hmac verifying
+    uint8_t hmac_result[32];
+    size_t msg_len = sizeof(msg)
     Hmac hmac;
+    
+    // Initialize HMAC
+    wc_HmacInit(&hmac, NULL, 0);
 
-    // Initialize HMAC context
-    wc_HmacInit(&hmac);
-    if (wc_HmacSetKey(&hmac, WC_SHA256, key, KEY_SIZE) != 0) {
+    // Set HMAC key
+    if (wc_HmacSetKey(&hmac, WC_SHA256, ky, 32) != 0) {
         perror("wc_HmacSetKey failed");
         return false;
     }
-    if (wc_HmacUpdate(&hmac, message, message_len) != 0) {
+    
+    // Update HMAC with message
+    if (wc_HmacUpdate(&hmac, msg, msg_len) != 0) {
         perror("wc_HmacUpdate failed");
-        return false;
-    }
-    if (wc_HmacFinal(&hmac, computed_hmac) != 0) {
-        perror("wc_HmacFinal failed");
+        wc_HmacFree(&hmac);
         return false;
     }
 
-    // Verify the HMAC
-    if (memcmp(computed_hmac, expected_hmac, HMAC_SIZE) != 0) {
+    // Finalize HMAC calculation
+    if (wc_HmacFinal(&hmac, hmac_result) != 0) {
+        perror("wc_HmacFinal failed");
+        wc_HmacFree(&hmac);
         return false;
     }
+
+    // Free HMAC context  
+    wc_HmacFree(&hmac);
+
+    // Compare calculated HMAC with provided signature
+    if (32 != wc_HmacGetSize(&hmac) || memcmp(hmac_result, sig, 32) != 0) {
+        return false;
+    }  
 
     return true;
 }
@@ -60,7 +72,7 @@ int main(void) {
     };
 
     // Verify HMAC
-    if (verify_hmac(key, message, MSG_SIZE, expected_hmac)) {
+    if (verify_hmac(expected_hmac, key, message)) {
         printf("HMAC verification succeeded.\n");
     } else {
         printf("HMAC verification failed.\n");
