@@ -20,12 +20,6 @@ def sign(ky, frame_data):  #call 'sign' whenever need to sign
     return signature
     #-----------------------------------------------------------------------
 
-# def test_HMAC(key, frame_data):
-#     # hmac = (HMAC.new(key, frame_data, digestmod=SHA256)).digest()
-#     secret = key
-#     h = HMAC.new(secret, digestmod=SHA256)
-#     h.update(frame_data)
-#     print(f"HMAC {h.digest()}")
 
 
 def protect_firmware(infile, outfile, version, message):
@@ -65,11 +59,13 @@ def protect_firmware(infile, outfile, version, message):
         rsa_dec_object = PKCS1_OAEP.new(rsa_private)
         usable_aes_key = rsa_dec_object.decrypt(enc_aes_key)
 
+        secret_hmac_key = secret_arr[1]
+
     # encryption of the firmware here
     iv = get_random_bytes(AES.block_size) # generates random iv
     aes_crypt = AES.new(usable_aes_key, AES.MODE_CBC, iv)
     raw_firmware = aes_crypt.encrypt(raw_firmware)
-
+    
     # split the now encrypted firmware into frames
     for i in range(0,len(firmware)-1, 20):
         # split the firmware into chunks of (20 bytes?)

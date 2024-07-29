@@ -324,7 +324,7 @@ void load_firmware(void) {
         rcv = uart_read(UART0, BLOCKING, &read);
         iv = (int)rcv << 8;
         rcv = uart_read(UART0, BLOCKING, &read);
-        iv += (int)rcv
+        iv += (int)rcv;
 
         // decrypt AES key
         wc_RsaPrivateDecrypt(aes_encrypted_key, 256, aes_key, 32, &rsa_private_key);
