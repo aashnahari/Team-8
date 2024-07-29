@@ -189,15 +189,15 @@ void load_firmware(void) {
     wc_AesInit(&aes, NULL, INVALID_DEVID);
     char aes_encrypted_key[256];
     char aes_key[32];
-    fseek(AES_OFFSET_PLACEHOLDER); // will be replaced with how many bytes to offset file pointer
-    fgets(aes_encrypted_key, 1, sizeof(aes_key), key_file_ptr); // func. may change depending on how the file is formatted
+    fgets(aes_encrypted_key, sizeof(aes_key), key_file_ptr);
 
     // Init RSA to use, configure (read key from file)
     RsaKey rsa_private_key;
     wc_InitRsaKey(&rsaKey, NULL);
+    char hmac_key_buf[32];
     char rsa_private_key_buf[256];
-    fseek(RSA_OFFSET_PLACEHOLDER); // will be replaced with how many bytes to offset file pointer
-    fgets(rsa_private_key_buf, 1, sizeof(rsa_private_key_buf), key_file_ptr); // func. may change depending on how the file is formatted
+    fgets(hmac_key_buf, sizeof(hmac_key_buf), key_file_ptr); // done to move file pointer to RSA
+    fgets(rsa_private_key_buf, sizeof(rsa_private_key_buf), key_file_ptr);
     wc_RsaPrivateKeyDecode(rsa_private_key_buf, 0, &rsa_private_key, sizeof(rsa_private_key_buf));
 
 
