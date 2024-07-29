@@ -25,6 +25,7 @@ This is the documentation for Team 8's (name in progress) secure data transmissi
 │   ├── fw_protect.py
 │   ├── fw_update.py
 │   ├── util.py
+│   ├── secret_build_output.txt
 ├── README.md
 
 Directories marked with * are part of the CrASHBoot system
@@ -40,13 +41,13 @@ The bootloader will also start the execution of the loaded vehicle firmware.
 
 There are three python scripts in the `tools` directory which are used to:
 
-1. Provision the bootloader (`bl_build.py`)
+1. Provision the bootloader and generate all keys (`bl_build.py`)
 2. Encrypt the firmware and package the data into frames (`fw_protect.py`)
 3. Update the firmware to a TM4C with a provisioned bootloader (`fw_update.py`)
 
 ### bl_build.py
 
-This script calls `make` in the `bootloader` directory.
+This script calls `make` in the `bootloader` directory, which makes the `bootloader.c` file into `bootloader.bin` so it can be flashed to the TM4C. The file `bl_build.py` utilizes a KDF process to generate the AES key and the HMAC-SHA256 key that will be used for the encryption and signature processes, respectively. Additionally, the RSA public & private key pairs are generated, and the AES key is encrypted using RSA. To ensure that the bootloader has access to the keys for verification and decryption processes, `bl_build.py` creates a header file called `header.h` that contains the RSA-encrypted AES key, the HMAC-SHA256 key, and the RSA private key. Once the `bootloader.bin` file has been compiled, `bl_build.py` deletes `header.h` so that the sensitive data is not retained in the script. `bl_build.py` sends the same information to our `secret_build_output.txt` file as well.
 
 ### fw_protect.py
 
@@ -62,7 +63,7 @@ This script encrypts the firmware data, breaks the data into frames, and then ad
 
 ### fw_update.py
 
-This script opens a serial channel with the bootloader, then writes the firmware metadata and binary broken into data frames to the bootloader.
+This script opens a serial channel with the bootloader and then writes each of the frames from `protected_firmware.bin` to the bootloader.
 
 # Building and Flashing the Bootloader
 
@@ -92,12 +93,12 @@ make
 
 ```
 cd ../tools
-python fw_protect.py --infile ../firmware/bin/firmware.bin --outfile firmware_protected.bin --version 2 --message "Firmware V2"
+python fw_protect.py --infile ../firmware/bin/firmware.bin --outfile firmware_protected.bin --version (insert version number here) --message (insert message here)
 ```
 
-This creates a firmware bundle called `firmware_protected.bin` in the tools directory.
+This creates a firmware bundle called `firmware_protected.bin` in the tools directory, which is used to store the data frames created by `fw_protect.py`.
 
-3. Reset the TM4C by pressig the RESET button
+3. Reset the TM4C by pressing the RESET button
 
 4. Run `fw_update.py`
 
@@ -107,43 +108,7 @@ python fw_update.py --firmware ./firmware_protected.bin
 
 If the firmware bundle is accepted by the bootloader, the `fw_update.py` tool will report it wrote all frames successfully.
 
-Additional firmwares can be updated by repeating steps 3 and 4, but only firmware versions higher than the one flashed to the board (or version 0) will be accepted.
-
-# Interacting with the Bootloader
-
-Using the custom `car-serial` script:
-```
-car-serial
-```
-
-Using `pyserial` module:
-
-```
-python -m serial.tools.miniterm /dev/ttyACM0 115200
-```
-
-You can now interact with the bootloader and firmware! Type 'B' to boot.
-
-Exit miniterm: `Ctrl-]`
-Exit picocom: `Ctrl-A X`
-
-# Launching the Debugger
-Use OpenOCD with the configuration files for the board to get it into debug mode and open GDB server ports:
-```bash
-openocd -f /usr/share/openocd/scripts/interface/ti-icdi.cfg -f /usr/share/openocd/scripts/board/ti_ek-tm4c123gxl.cfg
-```
-
-Start GDB and connect to the main OpenOCD debug port:
-```bash
-gdb-multiarch -ex "target extended-remote localhost:3333" bootloader/bin/bootloader.axf
-```
-
-Go to `main` function and set a breakpoint
-```
-layout src
-list main
-break bootloader.c:50
-```
+Only firmware versions higher than the current firmware that has been flashed to the board (or version 0) will be accepted.
 
 Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED <br>
 Approved for public release. Distribution unlimited 23-02181-25.
