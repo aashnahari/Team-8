@@ -50,8 +50,8 @@ def send_metadata(ser, metadata, debug=False):
         pass
 
     # Send size and version to bootloader.
-    if debug:
-        print(metadata)
+    # if debug:
+    #     print(metadata)
 
     ser.write(metadata)
 
@@ -64,8 +64,8 @@ def send_metadata(ser, metadata, debug=False):
 def send_frame(ser, frame, debug=False):
     ser.write(frame)  # Write the frame...
 
-    if debug:
-        print_hex(frame)
+    # if debug:
+    #     print_hex(frame)
 
     resp = ser.read(1)  # Wait for an OK from the bootloader
 
@@ -74,8 +74,8 @@ def send_frame(ser, frame, debug=False):
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
 
-    if debug:
-        print("Resp: {}".format(ord(resp)))
+    # if debug:
+    #     print("Resp: {}".format(ord(resp)))
 
 
 def update(ser, infile, debug):

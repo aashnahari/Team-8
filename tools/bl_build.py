@@ -27,16 +27,18 @@ BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
 ROOT_KEY = b"hi"
 
 
-def create_header_file(aes, hmac, rsaPriv):
+def create_header_file(aes, hmac, rsa_priv):
     with open('./header.h', 'w') as header_file:
         header_file.write("#ifndef HEADER_H\n")
         header_file.write("#define HEADER_H\n\n")
 
         # Convert binary data to hex string and format for C
-        aes_hex = bytes_to_hex_string(aes)
-        hmac_hex = bytes_to_hex_string(hmac)
-        rsa_priv_bin = rsaPriv.export_key()  # Export RSA private key
-        rsa_priv_hex = bytes_to_hex_string(rsa_priv_bin)
+        aes_hex = aes.hex()
+        hmac_hex = hmac.hex()
+        rsa_priv_hex = rsa_priv.export_key(format='DER').hex()
+        aes_key = [f'0x{aes_hex[i:i+2]}' for i in range(0, len(aes_hex), 2)]
+        mac_key = [f'0x{hmac_hex[i:i+2]}' for i in range(0, len(hmac_hex), 2)]
+        rsa_key = [f'0x{rsa_priv_hex[i:i+2]}' for i in range(0, len(rsa_priv_hex), 2)]
 
         header_file.write(f"#define ENC_AES_KEY {{ {', '.join(f'0x{aes_hex[i:i+2]}' for i in range(0, len(aes_hex), 2))} }}\n")
         header_file.write(f"#define HMAC_KEY {{ {', '.join(f'0x{hmac_hex[i:i+2]}' for i in range(0, len(hmac_hex), 2))} }}\n")

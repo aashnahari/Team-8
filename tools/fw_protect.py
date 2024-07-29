@@ -77,7 +77,6 @@ def protect_firmware(infile, outfile, version, message):
 
     # encryption of the firmware here
     iv = get_random_bytes(AES.block_size) # generates random iv
-    print_hex(iv)
     aes_crypt = AES.new(usable_aes_key, AES.MODE_CBC, iv)
     firmware = aes_crypt.encrypt(raw_firmware)
 
