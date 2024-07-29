@@ -85,16 +85,17 @@ def update(ser, infile, debug):
 
     metadata = firmware_blob[:1060]
     firmware = firmware_blob[1060:-34]
-    end = firware_blob[-34:]
+    end = firmware_blob[-34:]
 
+    #sending metadata (version_frame) first to bootloader to verify the version
     send_metadata(ser, metadata, debug=debug)
+
 
     ##EACH FRAME IS 562
     for idx, frame_start in enumerate(range(0, len(firmware), FRAME_SIZE)):
+        
+        # getting each (already divided) frame from firmware_protected.bin
         frame = firmware[frame_start : frame_start + FRAME_SIZE]
-
-        # Construct frame.
-
         send_frame(ser, frame, debug=debug)
         print(f"Wrote frame {idx} ({len(frame)} bytes)")
 

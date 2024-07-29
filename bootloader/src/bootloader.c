@@ -3,6 +3,7 @@
 //changes
 
 #include "bootloader.h"
+#include "header.h"
 
 // Hardware Imports
 #include "inc/hw_memmap.h"    // Peripheral Base Addresses
@@ -41,6 +42,9 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 // FLASH Constants
 #define FLASH_PAGESIZE 512
 #define FLASH_WRITESIZE 4
+#define MESSAGE_SIZE 1024
+#define SIGNATURE_SIZE 32
+#define IV_SIZE 16
 
 // Protocol Constants
 #define OK ((unsigned char)0x00)
@@ -53,11 +57,14 @@ uint16_t * fw_version_address = (uint16_t *)METADATA_BASE;
 uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2);
 uint8_t * fw_release_message_address;
 
-// Encrypted Firmware Buffer
+// Frame Buffers
 unsigned char encrypted_data[FLASH_PAGESIZE];
-
-// Unencrypted Firmware Buffer
 unsigned char unencrypted_data[FLASH_PAGESIZE];
+unsigned char message[MESSAGE_SIZE];
+unsigned char signature[SIGNATURE_SIZE];
+unsigned char iv[IV_SIZE];
+
+
 // Delay to allow time to connect GDB
 // green LED as visual indicator of when this function is running
 void debug_delay_led() {
@@ -83,6 +90,7 @@ void debug_delay_led() {
     GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0x0);
 }
 
+// apparently this doesn't even work so may need to update/change this whenever its resolved
 
 void disableDebugging(void){
 
@@ -127,7 +135,7 @@ int main(void) {
             nl(UART0);
         } else if (instruction == BOOT) {
             uart_write_str(UART0, "B");
-            uart_write_str(UART0, "Booting firmware...\n");
+            uart_write_str(UART0, "\nHmmm..we're booting firmware...\n");
             boot_firmware();
         }
     }
@@ -175,7 +183,7 @@ bool verify_hmac(uint8_t *sig, uint8_t *ky, uint8_t *msg){   //function for hmac
 
 void load_firmware(void) {
     int frame_length = 0;
-    int read = 0;
+    int status = 0;
     uint32_t rcv = 0;
 
     uint32_t data_index = 0;
@@ -183,87 +191,34 @@ void load_firmware(void) {
     uint32_t version = 0;
     uint32_t size = 0;
 /// ------------------------------------------------------------------- CHANGES
-    //key (get key later)
+//GET HMAC KEY FROM HEADER FILE
     char verify_key[] = "temp_key";
 
+//READING FRAME 0 (VERSION_FRAME)
+
     // Get version.
-    rcv = uart_read(UART0, BLOCKING, &read);
+    rcv = uart_read(UART0, BLOCKING, &status);
     version = (uint32_t)rcv;
-    rcv = uart_read(UART0, BLOCKING, &read);
+    rcv = uart_read(UART0, BLOCKING, &status);
     version |= (uint32_t)rcv << 8;
 
-    // Get size.
-    rcv = uart_read(UART0, BLOCKING, &read);
-    uint16_t fw_size = (uint16_t)rcv;
-    rcv = uart_read(UART0, BLOCKING, &read);
-    fw_size |= (uint16_t)rcv << 8;
+    // Get size (overall of firmware).
+    rcv = uart_read(UART0, BLOCKING, &status);
+    size = (uint32_t)rcv;
+    rcv = uart_read(UART0, BLOCKING, &status);
+    size |= (uint32_t)rcv << 8;
 
-    //get "message"
-    uint8_t message[1024];
-    for (int i = 0; i < 1024; i++){
-        message[i] = uart_read(UART0, BLOCKING, &read);
+    for (int j = 0; j < MESSAGE_SIZE; ++j) {
+        message[j] = uart_read(UART0, BLOCKING, &status);
     }
-    //get signature to verify frame 0
-    uint8_t hmac_signature[32];
-    for (int i = 0; i < 32; i++){
-        hmac_signature[i] = uart_read(UART0, BLOCKING, &read);
+
+    for (int k = 0; k < SIGNATURE_SIZE; ++k){
+        signature[k] = uart_read(UART0, BLOCKING, &status);
     }
-    //Verifying hmac signature for firmware data frames
-    if (verify_hmac(hmac_signature, verify_key, message) == false){
+     //Verifying hmac signature for firmware data frames
+    if (verify_hmac(signature, verify_key, message) == false){
         SysCtlReset();
     }
-
-    int track = 1060; 
-    while (track < fw_size){
-        //get the size of the current frame data
-        rcv = uart_read(UART0, BLOCKING, &read);
-        uint16_t chunk_size = (uint16_t)rcv;
-        rcv = uart_read(UART0, BLOCKING, &read);
-        chunk_size |= (uint16_t)rcv << 8;
-
-        uint8_t iv[16];
-        for (int i = 0; i < 16; i++){
-            iv[i] = uart_read(UART0, BLOCKING, &read);
-        }
-
-
-        uint8_t data_chunk[512];
-        for (int i = 0; i < 512; i++){
-            data_chunk[i] = uart_read(UART0, BLOCKING, &read);
-        }
-
-        uint8_t chunk_signature[32];
-        for (int i = 0; i < 32; i++){
-            chunk_signature[i] = uart_read(UART0, BLOCKING, &read);
-        }
-        if(verify_hmac(chunk_signature, verify_key, data_chunk) == false){
-            SysCtlReset();
-        }
-
-        track += 512;
-    }
-
-    //verify signature for end frame
-    uint8_t end_msg[2];
-    for (int i = 0; i < 2; i++){
-        end_msg[i] = uart_read(UART0, BLOCKING, &read);
-    }
-
-    uint8_t end_signature[32];
-    for (int i = 0; i < 2; i++){
-        end_signature[i] = uart_read(UART0, BLOCKING, &read);
-    }
-
-    if(verify_hmac(end_signature, verify_key, end_msg) == false){
-        SysCtlReset();
-    }
-
-    //-----------------------------------------------------------------------
-
-
-
-
-
 
 
     // Compare to old version and abort if older (note special case for version 0).
@@ -281,15 +236,18 @@ void load_firmware(void) {
         version = old_version;
     }
 
-    // Write new firmware size and version to Flash
+
+// WRITE INFO TO FLASH!!!
     // Create 32 bit word for flash programming, version is at lower address, size is at higher address
     uint32_t metadata = ((size & 0xFFFF) << 16) | (version & 0xFFFF);
     program_flash((uint8_t *) METADATA_BASE, (uint8_t *)(&metadata), 4);
+    //also writing message to flash
+    program_flash((uint8_t *)(METADATA_BASE + 4), message, MESSAGE_SIZE);
 
     uart_write(UART0, OK); // Acknowledge the metadata.
 
     /* Loop here until you can get all your characters and stuff */
-
+//NEED TO FIX BASED ON HOW WE ACCESS THE HEADER
     // Opens secret key file
     FILE* key_file_ptr;
     key_file_ptr = fopen('./secret_build_output.txt', 'r');
@@ -314,38 +272,45 @@ void load_firmware(void) {
     while (1) {
 
         // Get two bytes for the length.
-        rcv = uart_read(UART0, BLOCKING, &read);
+        rcv = uart_read(UART0, BLOCKING, &status);
         frame_length = (int)rcv << 8;
-        rcv = uart_read(UART0, BLOCKING, &read);
+        rcv = uart_read(UART0, BLOCKING, &status);
         frame_length += (int)rcv;
-
-        // get the IV
-        char iv[16];
-        rcv = uart_read(UART0, BLOCKING, &read);
-        iv = (int)rcv << 8;
-        rcv = uart_read(UART0, BLOCKING, &read);
-        iv += (int)rcv;
-
-        // decrypt AES key
-        wc_RsaPrivateDecrypt(aes_encrypted_key, 256, aes_key, 32, &rsa_private_key);
-
-        // init the AES object in WolfSSL with now decrypted key
-        wc_AesSetKey(&aes, aes_key, 32, iv, AES_DECRYPTION);
-
-        // Get the number of bytes specified
-        for (int i = 0; i < frame_length; ++i) {
-            data[data_index] = uart_read(UART0, BLOCKING, &read);
-            data_index += 1;
+    //MOVE THIS TO BE AFTER READING THE SIGNATURE?? OR ADD IN READING SIGNATURE INTO THIS IF
+        if (frame_length == 0x0000) {
+                //verify signature in here first, then send ok
+                if(verify_hmac(chunk_signature, verify_key, data_chunk) == false){
+                SysCtlReset();
+                }
+                uart_write(UART0, OK);
+                break;
         }
+        
+        // Read each part of the frame into their respective buffers
+        for (int a = 0;a < frame_length; ++a) {
+            encrypted_data[data_index] = uart_read(UART0, BLOCKING, &status);
+            data_index += 1;
+        } 
 
-        // decrypt data frame with AES
-        wc_AesCbcDecrypt(&aes, unencrypted_data, encrypted_data, 32);
+        for (int b = 0; b < IV_SIZE; ++b){
+    // need to fix this based on how the IV is sent
+            iv[b] = uart_read(UART0, BLOCKING, &status);
+            rcv = uart_read(UART0, BLOCKING, &read);
+            iv = (int)rcv << 8;
+            rcv = uart_read(UART0, BLOCKING, &read);
+            iv += (int)rcv;
+        }
+        
 
-        // signature check should be somewhere here or under?
+        for (int c = 0; c < SIGNATURE_SIZE; ++c){
+            signature[c] = uart_read(UART0, BLOCKING, &status);
+        } 
+
+
 
         // If we filed our page buffer, program it
-        if (data_index == FLASH_PAGESIZE || frame_length == 0) {
-            // Try to write flash and check for error
+        if (data_index == FLASH_PAGESIZE) {
+            // writing the encrypted data to flash
             if (program_flash((uint8_t *) page_addr, data, data_index)) {
                 uart_write(UART0, ERROR); // Reject the firmware
                 SysCtlReset();            // Reset device
@@ -355,22 +320,31 @@ void load_firmware(void) {
             // Update to next page
             page_addr += FLASH_PAGESIZE;
             data_index = 0;
+        }
 
-            // If at end of firmware, go to main
-            if (frame_length == 0) {
-                uart_write(UART0, OK);
-                break;
-            }
-        } // if
+    // need to fix based on how we're getting the key
+        wc_RsaPrivateDecrypt(aes_encrypted_key, 256, aes_key, 32, &rsa_private_key);
+
+        // init the AES object in WolfSSL with now decrypted key
+        wc_AesSetKey(&aes, aes_key, 32, iv, AES_DECRYPTION);
+
+        // decrypt data frame with AES
+        wc_AesCbcDecrypt(&aes, unencrypted_data, encrypted_data, 32);
+
+        
+
+        if(verify_hmac(chunk_signature, verify_key, data_chunk) == false){
+            SysCtlReset();
+        }
 
         uart_write(UART0, OK); // Acknowledge the frame.
-    } // while(1)
-}
+    }
+    }
 
 /*
  * Program a stream of bytes to the flash.
  * This function takes the starting address of a 1KB page, a pointer to the
- * data to write, and the number of byets to write.
+ * data to write, and the number of bytes to write.
  *
  * This functions performs an erase of the specified flash page before writing
  * the data.
@@ -413,8 +387,10 @@ long program_flash(void* page_addr, unsigned char * data, unsigned int data_len)
     }
 }
 
+
 void boot_firmware(void) {
-    // Check if firmware loaded
+//REVERIFY THE SIGNATURE (SECURE BOOT) ?????? what to verify to do the secure boot
+    // Check if firmware loaded --> what even is this code....
     int fw_present = 0;
     for (uint8_t* i = (uint8_t*) FW_BASE; i < (uint8_t*) FW_BASE + 20; i++) {
         if (*i != 0xFF) {
@@ -427,10 +403,10 @@ void boot_firmware(void) {
         SysCtlReset();            // Reset device
         return;
     }
-
+//DECRYPT THE FIRMWARE HERE
     // compute the release message address, and then print it
     uint16_t fw_size = *fw_size_address;
-    fw_release_message_address = (uint8_t *)(FW_BASE + fw_size);
+    fw_release_message_address = (uint8_t *)(METADATA_BASE + 4);
     uart_write_str(UART0, (char *)fw_release_message_address);
 
     // Boot the firmware
