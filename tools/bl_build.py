@@ -28,14 +28,15 @@ ROOT_KEY = b"hi"
 
 
 def create_header_file(aes, hmac, rsaPriv):
-    with open('../Team-8/tools/header.h', 'w') as header_file:
+    with open('./header.h', 'w') as header_file:
         header_file.write("#ifndef HEADER_H\n")
         header_file.write("#define HEADER_H\n\n")
 
         # Convert binary data to hex string and format for C
         aes_hex = bytes_to_hex_string(aes)
         hmac_hex = bytes_to_hex_string(hmac)
-        rsa_priv_hex = bytes_to_hex_string(rsaPriv)
+        rsa_priv_bin = rsaPriv.export_key()  # Export RSA private key
+        rsa_priv_hex = bytes_to_hex_string(rsa_priv_bin)
 
         header_file.write(f"#define ENC_AES_KEY {{ {', '.join(f'0x{aes_hex[i:i+2]}' for i in range(0, len(aes_hex), 2))} }}\n")
         header_file.write(f"#define HMAC_KEY {{ {', '.join(f'0x{hmac_hex[i:i+2]}' for i in range(0, len(hmac_hex), 2))} }}\n")
@@ -73,7 +74,7 @@ def key_derivation(root_key):
     
 
     hmac_key = hkdf.derive(ikm)
-    with open('../Team-8/tools/secret_build_output.txt', 'wb') as file:
+    with open('./secret_build_output.txt', 'wb') as file:
         key_arr = generate_and_encrypt(aes_key) # encrypts AES key with generated RSA key
         rsa_private = key_arr[0][1]
         rsa_public = key_arr[0][0]
