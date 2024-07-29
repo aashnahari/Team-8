@@ -1,22 +1,5 @@
 # Cryptographic Automotive Software Handler and Bootloader (CrASHBoot)
-
-Installation and development guide for the most secure (TM) automotive bootloader on the planet! We guarentee that cars running our software will be unhackable (provided hacking is not attempted). Of all the automotive bootloaders, this is certainly one of them. Read on and tremble at our embedded security skillz.
-
-### Internal Notes
-
-```
-//TODO: Make the design secure
-//TODO: Hire interns
-//TODO: Delete TODOs before publishing
-```
-
-I find myself trapped in the labyrinthine depths of my company, shackled by an unending torrent of menial tasks. My desk has become my prison, my workload, my jailer. I am buried under a mountain of code, my skills squandered on trivialities while critical applications do not get the attention they deserve. In a desperate attempt to keep up with the workload, I've had to rapidly create a functional, yet insecure, product. It's a risky move, one that fills me with dread. I haven't had the time to implement the necessary security goals of confidentiality, integrity, and authentication. If you are reading this: I implore you, proceed with caution. **Do not release this software.** It is potentially riddled with vulnerabilities and exposed to the most basic types of attacks. 
-
-Please, send help. I need to escape this relentless cycle. I need a team of talented interns to tackle this challenge. Otherwise, I fear the worst.
-
-### External Notes
-
-Ship it!
+This is the documentation for Team 8's (name in progress) secure data transmission system for our "autonomous car" (tiva board). Enjoy!
 
 # Project Structure
 ```
@@ -49,7 +32,7 @@ Directories marked with * are part of the CrASHBoot system
 
 ## Bootloader
 
-The `bootloader` directory contains source code that is compiled and loaded onto the TM4C microcontroller. The bootloader manages which firmware can be updated to the TM4C. When connected to the fw_update tool, the bootloader checks the version of the new firmware against the internal firmware version before accepting the new firmware.
+The `bootloader` directory contains source code that is compiled and loaded onto the TM4C microcontroller. The bootloader manages which firmware can be updated to the TM4C. When connected to the fw_update tool, the bootloader will first check the version of the new firmware, which will be sent in the version frame–FRAME 0– against the stored firmware version. If the firmware version is valid, the bootloader will then decrypt the frames of firmware data using the stored AES key (from header.h) and verify the signature of each frame using the HMAC-SHA256 key (again, from header.h). If no errors arise, the firmware (and its version number) will be stored in memory. 
 
 The bootloader will also start the execution of the loaded vehicle firmware.
 
@@ -58,7 +41,7 @@ The bootloader will also start the execution of the loaded vehicle firmware.
 There are three python scripts in the `tools` directory which are used to:
 
 1. Provision the bootloader (`bl_build.py`)
-2. Package the firmware (`fw_protect.py`)
+2. Encrypt the firmware and package the data into frames (`fw_protect.py`)
 3. Update the firmware to a TM4C with a provisioned bootloader (`fw_update.py`)
 
 ### bl_build.py
@@ -67,7 +50,15 @@ This script calls `make` in the `bootloader` directory.
 
 ### fw_protect.py
 
-This script bundles the version and release message with the firmware binary.
+This script encrypts the firmware data, breaks the data into frames, and then adds a signature to each frame. The frames are then written to the outfile `protected_firmware.bin`. There are 3 types of frames that this script creates.
+ #### FRAME 0 (version_frame)
+ This frame type contains all of the metadata–the version of the firmware and the total size of the firmware– along with the firmware's release message and an HMAC-SHA256 signature.
+
+ #### FRAME 1 (firmware_frame)
+ This frame type contains the AES encryption IV, the size of the firmware data in the frame, a chunk of AES-encrypted firmware, and then an HMAC-SHA256 signature.
+
+ #### FRAME 2 (end_frame)
+ This frame type contains a 'frame size' of 0 bytes and an HMAC-SHA256 signature. This frame indicates to the bootloader that all of the firmware data has been sent through serial.
 
 ### fw_update.py
 
