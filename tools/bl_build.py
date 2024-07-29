@@ -53,11 +53,20 @@ def key_derivation(root_key):
 
     hmac_key = hkdf.derive(ikm)
     with open('../Team-8/tools/secret_build_output.txt', 'wb') as file:
+        key_arr = generate_and_encrypt(aes_key) # encrypts AES key with generated RSA key
+        rsa_private = key_arr[0][1]
+        rsa_public = key_arr[0][0]
+        aes_key = key_arr[1]
         print(aes_key.hex())
         print(hmac_key.hex())
         file.write(aes_key)
         file.write(b"\n")
         file.write(hmac_key)
+        file.write(b"\n")
+        file.write(rsa_private)
+        file.write(b"\n")
+        file.write(rsa_public)
+        file.write(b"\n")
     # with open('../Team-8/tools/secret_build_output.txt', 'rb') as file:
     #     print(file.read().hex())
 
