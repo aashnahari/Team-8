@@ -8,6 +8,10 @@ Firmware Bundle-and-Protect Tool
 
 """
 import argparse
+from Crypto.Cipher import AES
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.PublicKey import RSA
+from Crypto.Random import get_random_bytes
 from pwn import *
 from Crypto.Hash import HMAC, SHA256
 def sign(ky, frame_data):  #call 'sign' whenever need to sign
@@ -47,30 +51,44 @@ def protect_firmware(infile, outfile, version, message):
     # Load firmware binary from infile
     with open(infile, "rb") as fp:
         raw_firmware = fp.read()
+        raw_firmware = fp.read()
+
+    # pad the firmware here
+    while len(raw_firmware) % 512 != 0:
+        raw_firmware += b'0x00'
+
+    # read key from secrets file here, decrypt, save to variable
+    with open("./secret_build_output.txt", "rb") as secret:
+        secret_arr = secret.readlines()
+        enc_aes_key = secret_arr[0]
+        rsa_private = secret_arr[2] # replace with location of RSA priv. key rel. to start
+        rsa_dec_object = PKCS1_OAEP.new(rsa_private)
+        usable_aes_key = rsa_dec_object.decrypt(enc_aes_key)
 
     # encryption of the firmware here
-    firmware = raw_firmware #for now just keeping this as the "encryption step"
-    
-    #split the now encrypted firmware into frames
+    iv = get_random_bytes(AES.block_size) # generates random iv
+    aes_crypt = AES.new(usable_aes_key, AES.MODE_CBC, iv)
+    raw_firmware = aes_crypt.encrypt(raw_firmware)
+
+    # split the now encrypted firmware into frames
     for i in range(0,len(firmware)-1, 20):
         # split the firmware into chunks of (20 bytes?)
         chunk = firmware[i:i+20] 
+
         #^^^^this definitely isnt how this should be done, need to double check
-        
         frame_size = p16(len(chunk), endian='little')
         # hash it
         data_hash = b'\x01\x01'
 
         # add message & hash to firmware frame
-        # data_frame = frame_size + chunk + # TODO: add message here
-        data_frame = b'change me' # TODO: update as above
+        data_frame = frame_size + chunk + data_hash
 
         #write frames into outfile
         with open(outfile, "wb+") as outfile:
             outfile.write(data_frame)
     
 #FRAME 2: END
-    end_message = b'END'
+    end_message = b'\x00\x00'
     end_hash = b'\x02\x02'
     end_size = p16(len(end_hash), endian = 'little')
     end_frame = end_message + end_size+ end_hash
@@ -80,17 +98,11 @@ def protect_firmware(infile, outfile, version, message):
 
 
 if __name__ == "__main__":
-    #daataa = b'hello'
-    #key = b'gbyee'
-    print("")
-    #test_HMAC(key, daataa)
-    # parser = argparse.ArgumentParser(description="Firmware Update Tool")
-    # parser.add_argument("--infile", help="Path to the firmware image to protect.", required=True)
-    # parser.add_argument("--outfile", help="Filename for the output firmware.", required=True)
-    # parser.add_argument("--version", help="Version number of this firmware.", required=True)
-    # parser.add_argument("--message", help="Release message for this firmware.", required=True)
-    # # need to add an argument of the key for encryption --> idk how to do this without exposing 
-    # #the key but whatever
-    # args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Firmware Update Tool")
+    parser.add_argument("--infile", help="Path to the firmware image to protect.", required=True)
+    parser.add_argument("--outfile", help="Filename for the output firmware.", required=True)
+    parser.add_argument("--version", help="Version number of this firmware.", required=True)
+    parser.add_argument("--message", help="Release message for this firmware.", required=True)
+    args = parser.parse_args()
 
     # protect_firmware(infile=args.infile, outfile=args.outfile, version=int(args.version), message=args.message)

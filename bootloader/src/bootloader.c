@@ -1,5 +1,6 @@
 // Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED
 // Approved for public release. Distribution unlimited 23-02181-25.
+//changes
 
 #include "bootloader.h"
 
@@ -38,7 +39,7 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 #define FW_BASE 0x10000      // base address of firmware in Flash
 
 // FLASH Constants
-#define FLASH_PAGESIZE 1024
+#define FLASH_PAGESIZE 512
 #define FLASH_WRITESIZE 4
 
 // Protocol Constants
@@ -52,9 +53,11 @@ uint16_t * fw_version_address = (uint16_t *)METADATA_BASE;
 uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2);
 uint8_t * fw_release_message_address;
 
-// Firmware Buffer
-unsigned char data[FLASH_PAGESIZE];
+// Encrypted Firmware Buffer
+unsigned char encrypted_data[FLASH_PAGESIZE];
 
+// Unencrypted Firmware Buffer
+unsigned char unencrypted_data[FLASH_PAGESIZE];
 // Delay to allow time to connect GDB
 // green LED as visual indicator of when this function is running
 void debug_delay_led() {
@@ -81,7 +84,19 @@ void debug_delay_led() {
 }
 
 
+void disableDebugging(void){
+
+// Write the unlock value to the flash memory protection registers
+HWREG(FLASH_FMPRE0) = 0xFFFFFFFF;
+HWREG(FLASH_FMPPE0) = 0xFFFFFFFF;
+
+// Disable the debug interface by writing to the FMD and FMC registers
+HWREG(FLASH_FMD) = 0xA4420004;
+HWREG(FLASH_FMC) = FLASH_FMC_WRKEY | FLASH_FMC_COMT;
+}
+
 int main(void) {
+    disableDebugging();
 
     // Enable the GPIO port that is used for the on-board LED.
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
@@ -274,6 +289,28 @@ void load_firmware(void) {
     uart_write(UART0, OK); // Acknowledge the metadata.
 
     /* Loop here until you can get all your characters and stuff */
+
+    // Opens secret key file
+    FILE* key_file_ptr;
+    key_file_ptr = fopen('./secret_build_output.txt', 'r');
+
+    // Init AES to use, configure (read key from file)
+    Aes aes;
+    wc_AesInit(&aes, NULL, INVALID_DEVID);
+    char aes_encrypted_key[256];
+    char aes_key[32];
+    fgets(aes_encrypted_key, sizeof(aes_key), key_file_ptr);
+
+    // Init RSA to use, configure (read key from file)
+    RsaKey rsa_private_key;
+    wc_InitRsaKey(&rsaKey, NULL);
+    char hmac_key_buf[32];
+    char rsa_private_key_buf[256];
+    fgets(hmac_key_buf, sizeof(hmac_key_buf), key_file_ptr); // done to move file pointer to RSA
+    fgets(rsa_private_key_buf, sizeof(rsa_private_key_buf), key_file_ptr);
+    wc_RsaPrivateKeyDecode(rsa_private_key_buf, 0, &rsa_private_key, sizeof(rsa_private_key_buf));
+
+
     while (1) {
 
         // Get two bytes for the length.
@@ -282,11 +319,29 @@ void load_firmware(void) {
         rcv = uart_read(UART0, BLOCKING, &read);
         frame_length += (int)rcv;
 
+        // get the IV
+        char iv[16];
+        rcv = uart_read(UART0, BLOCKING, &read);
+        iv = (int)rcv << 8;
+        rcv = uart_read(UART0, BLOCKING, &read);
+        iv += (int)rcv
+
+        // decrypt AES key
+        wc_RsaPrivateDecrypt(aes_encrypted_key, 256, aes_key, 32, &rsa_private_key);
+
+        // init the AES object in WolfSSL with now decrypted key
+        wc_AesSetKey(&aes, aes_key, 32, iv, AES_DECRYPTION);
+
         // Get the number of bytes specified
         for (int i = 0; i < frame_length; ++i) {
             data[data_index] = uart_read(UART0, BLOCKING, &read);
             data_index += 1;
-        } // for
+        }
+
+        // decrypt data frame with AES
+        wc_AesCbcDecrypt(&aes, unencrypted_data, encrypted_data, 32);
+
+        // signature check should be somewhere here or under?
 
         // If we filed our page buffer, program it
         if (data_index == FLASH_PAGESIZE || frame_length == 0) {
