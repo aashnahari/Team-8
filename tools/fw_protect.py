@@ -9,7 +9,6 @@ Firmware Bundle-and-Protect Tool
 import argparse
 from Crypto.Cipher import AES
 from Crypto.Cipher import PKCS1_OAEP
-from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 from pwn import *
 from util import *
@@ -68,11 +67,7 @@ def protect_firmware(infile, outfile, version, message):
     # read key from secrets file here, decrypt, save to variable
     with open("./secret_build_output.txt", "rb") as secret:
         secret_arr = secret.readlines()
-        enc_aes_key = secret_arr[0]
-        rsa_private = secret_arr[2] # replace with location of RSA priv. key rel. to start
-        rsa_dec_object = PKCS1_OAEP.new(rsa_private)
-        usable_aes_key = rsa_dec_object.decrypt(enc_aes_key)
-
+        usable_aes_key = secret_arr[0]
         secret_hmac_key = secret_arr[1]
 
     # encryption of the firmware here

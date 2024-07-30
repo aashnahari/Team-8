@@ -13,7 +13,6 @@ from util import *
 import os
 import pathlib
 import subprocess
-from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 
 import cryptography
@@ -27,7 +26,7 @@ BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
 ROOT_KEY = b"hi"
 
 
-def create_header_file(aes, hmac, rsaPriv):
+def create_header_file(aes, hmac):
     with open('./header.h', 'w') as header_file:
         header_file.write("#ifndef HEADER_H\n")
         header_file.write("#define HEADER_H\n\n")
@@ -35,10 +34,8 @@ def create_header_file(aes, hmac, rsaPriv):
         # Convert binary data to hex string and format for C
         aes_hex = bytes_to_hex_string(aes)
         hmac_hex = bytes_to_hex_string(hmac)
-        rsa_priv_bytes = rsaPriv.export_key(format='DER')  # Export the key in DER format (binary)
-        rsa_priv_hex = bytes_to_hex_string(rsa_priv_bytes)
 
-        header_file.write("static const unsigned char ENC_AES_KEY[] = { ")
+        header_file.write("static const unsigned char AES_KEY[] = { ")
         header_file.write(', '.join(f'0x{aes_hex[i:i+2]}' for i in range(0, len(aes_hex), 2)))
         header_file.write(" };\n")
 
@@ -46,9 +43,6 @@ def create_header_file(aes, hmac, rsaPriv):
         header_file.write(', '.join(f'0x{hmac_hex[i:i+2]}' for i in range(0, len(hmac_hex), 2)))
         header_file.write(" };\n")
 
-        header_file.write("static const unsigned char RSA_PRIVATE_KEY[] = { ")
-        header_file.write(', '.join(f'0x{rsa_priv_hex[i:i+2]}' for i in range(0, len(rsa_priv_hex), 2)))
-        header_file.write(" };\n\n")
 
         header_file.write("#endif // HEADER_H\n")
 
@@ -84,22 +78,14 @@ def key_derivation(root_key):
 
     hmac_key = hkdf.derive(ikm)
     with open('./secret_build_output.txt', 'wb') as file:
-        key_arr = generate_and_encrypt(aes_key) # encrypts AES key with generated RSA key
-        rsa_private = key_arr[0][1]
-        rsa_public = key_arr[0][0]
-        aes_key_enc = key_arr[1]
         file.write(aes_key)
         file.write(b"\n")
         file.write(hmac_key)
         file.write(b"\n")
-        file.write(rsa_private.export_key())
-        file.write(b"\n")
-        file.write(rsa_public.export_key())
-        file.write(b"\n")
     # with open('../Team-8/tools/secret_build_output.txt', 'rb') as file:
     #     print(file.read().hex())
 
-    return aes_key_enc, hmac_key, rsa_private
+    return aes_key, hmac_key
 
 
 
@@ -117,18 +103,10 @@ def make_bootloader() -> bool:
     # Return True if make returned 0, otherwise return False.
     return status == 0
 
-# input: unencrypted AES key
-# output: RSA key pair and encrypted AES key
-# output format: [[public key, private key], encrypted AES key]
-def generate_and_encrypt(unenc_key):
-    rsa_private = RSA.generate(2048)
-    rsa_public = rsa_private.public_key()
-    cipher = PKCS1_OAEP.new(rsa_public)
-    enc_aes = cipher.encrypt(unenc_key)
-    return [[rsa_public, rsa_private], enc_aes]
+
 
 if __name__ == "__main__":
-    aes_enc, hmac, rsaPriv = key_derivation(ROOT_KEY)
-    create_header_file(aes_enc, hmac, rsaPriv)
+    aes_enc, hmac = key_derivation(ROOT_KEY)
+    create_header_file(aes_enc, hmac)
     make_bootloader()
     delete_header_file("../Team-8/tools/header.h")
