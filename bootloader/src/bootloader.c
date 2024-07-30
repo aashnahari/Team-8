@@ -34,6 +34,7 @@
 void load_firmware(void);
 void boot_firmware(void);
 void reencrypt_firmware(void);
+void reencrypt_firmware(void);
 void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 
 // Firmware Constants
@@ -45,6 +46,8 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 #define FLASH_WRITESIZE 4
 #define MESSAGE_SIZE 1024
 #define SIGNATURE_SIZE 32
+#define HMAC_SIZE 32
+#define HMAC_KEY_SIZE 32   // might need to change key size
 #define IV_SIZE 16
 #define HMAC_SIZE 32
 #define HMAC_KEY_SIZE 32   // might need to change key size
@@ -63,8 +66,9 @@ uint8_t * fw_release_message_address;
 // Frame Buffers
 unsigned char encrypted_data[FLASH_PAGESIZE];
 unsigned char unencrypted_data[FLASH_PAGESIZE];
-unsigned char message[MESSAGE_SIZE];
+unsigned char message[MESSAGE_SIZE + 4];    //version + data size + message
 unsigned char signature[SIGNATURE_SIZE];
+unsigned char end_signature[SIGNATURE_SIZE];
 unsigned char end_signature[SIGNATURE_SIZE];
 unsigned char iv[IV_SIZE];
 
@@ -134,6 +138,7 @@ int main(void) {
             uart_write_str(UART0, "\nHmmm..we're booting firmware...\n");
             boot_firmware();
             reencrypt_firmware();
+            reencrypt_firmware();
         }
     }
 }
@@ -143,9 +148,12 @@ bool verify_hmac(uint8_t *sig, const uint8_t *ky, uint8_t *msg, int msg_size){  
     Hmac hmac;
     wc_HmacInit(&hmac, NULL, 0);
     if (wc_HmacSetKey(&hmac, WC_SHA256, ky, HMAC_KEY_SIZE) != 0){
+    wc_HmacInit(&hmac, NULL, 0);
+    if (wc_HmacSetKey(&hmac, WC_SHA256, ky, HMAC_KEY_SIZE) != 0){
         perror("wc_HmacSetKey failed");
         return false;
     }
+    if (wc_HmacUpdate(&hmac, msg, msg_size) != 0){
     if (wc_HmacUpdate(&hmac, msg, msg_size) != 0){
         perror("wc_HmacUpdate failed");
         return false;
@@ -164,6 +172,9 @@ bool verify_hmac(uint8_t *sig, const uint8_t *ky, uint8_t *msg, int msg_size){  
  /*
  * Load the firmware into flash.
  */
+ /*
+ * Load the firmware into flash.
+ */
 
 
 
@@ -178,20 +189,27 @@ void load_firmware(void) {
     uint32_t size = 0;
 
     // Reading the frame 0 (VERSION_FRAME)
+    // Reading the frame 0 (VERSION_FRAME)
     rcv = uart_read(UART0, BLOCKING, &status);
     version = (uint32_t)rcv;
+    message[0] = rcv; 
     rcv = uart_read(UART0, BLOCKING, &status);
+    message[1] = rcv; 
     version |= (uint32_t)rcv << 8;
 
     rcv = uart_read(UART0, BLOCKING, &status);
     size = (uint32_t)rcv;
+    message[2] = rcv; 
     rcv = uart_read(UART0, BLOCKING, &status);
     size |= (uint32_t)rcv << 8;
+    message[3] = rcv; 
 
-    for (int j = 0; j < MESSAGE_SIZE; ++j) {
+
+    for (int j = 4; j < MESSAGE_SIZE + 4; ++j) {
         message[j] = uart_read(UART0, BLOCKING, &status);
     }
 
+    for (int k = 0; k < SIGNATURE_SIZE; ++k) {
     for (int k = 0; k < SIGNATURE_SIZE; ++k) {
         signature[k] = uart_read(UART0, BLOCKING, &status);
     }
@@ -202,11 +220,14 @@ void load_firmware(void) {
     }
 
     // Compare to old version and abort if older (note special case for version 0)
+    // Compare to old version and abort if older (note special case for version 0)
     uint16_t old_version = *fw_version_address;
     if (old_version == 0xFFFF) {
         old_version = 1;
     }
     if (version != 0 && version < old_version) {
+        uart_write(UART0, ERROR);
+        SysCtlReset();
         uart_write(UART0, ERROR);
         SysCtlReset();
         return;
@@ -215,12 +236,16 @@ void load_firmware(void) {
     }
 
     // Write metadata & message to flash
+    // Write metadata & message to flash
     uint32_t metadata = ((size & 0xFFFF) << 16) | (version & 0xFFFF);
+    program_flash((uint8_t *)METADATA_BASE, (uint8_t *)(&metadata), 4);
     program_flash((uint8_t *)METADATA_BASE, (uint8_t *)(&metadata), 4);
     program_flash((uint8_t *)(METADATA_BASE + 4), message, MESSAGE_SIZE);
 
     uart_write(UART0, OK);
+    uart_write(UART0, OK);
 
+    // Decrypt and verify data frames
     // Decrypt and verify data frames
     Aes aes;
     wc_AesInit(&aes, NULL, INVALID_DEVID);
@@ -240,6 +265,8 @@ void load_firmware(void) {
         frame_length += (int)rcv;
 
         //if this is the end frame, then wrap up (verify end sig and then stop)
+
+        //if this is the end frame, then wrap up (verify end sig and then stop)
         if (frame_length == 0x0000) {
             for (int u = 0; u < SIGNATURE_SIZE; ++u) {
             end_signature[u] = uart_read(UART0, BLOCKING, &status);
@@ -254,20 +281,31 @@ void load_firmware(void) {
         
         //assign each piece of data frame to their respective buffers
         for (int a = 0; a < frame_length; ++a) {
+        //assign each piece of data frame to their respective buffers
+        for (int a = 0; a < frame_length; ++a) {
             encrypted_data[data_index] = uart_read(UART0, BLOCKING, &status);
             data_index += 1;
         }
+        }
 
+        for (int b = 0; b < IV_SIZE; ++b) {
         for (int b = 0; b < IV_SIZE; ++b) {
             iv[b] = uart_read(UART0, BLOCKING, &status);
         }
 
         for (int c = 0; c < SIGNATURE_SIZE; ++c) {
+
+        for (int c = 0; c < SIGNATURE_SIZE; ++c) {
             signature[c] = uart_read(UART0, BLOCKING, &status);
+        }
         }
 
         //if we fill page buffer...
+        //if we fill page buffer...
         if (data_index == FLASH_PAGESIZE) {
+            if (program_flash((uint8_t *)page_addr, encrypted_data, data_index)) {
+                uart_write(UART0, ERROR);
+                SysCtlReset();
             if (program_flash((uint8_t *)page_addr, encrypted_data, data_index)) {
                 uart_write(UART0, ERROR);
                 SysCtlReset();
@@ -283,8 +321,12 @@ void load_firmware(void) {
         }
     
         uart_write(UART0, OK);
+    
+        uart_write(UART0, OK);
     }
 }
+}
+
 
 
 /*
@@ -336,16 +378,19 @@ long program_flash(void* page_addr, unsigned char * data, unsigned int data_len)
 
 void boot_firmware(void) {
     // Check if firmware is loaded
+    // Check if firmware is loaded
     int fw_present = 0;
     for (uint8_t* i = (uint8_t*) FW_BASE; i < (uint8_t*) FW_BASE + 20; i++) {
         if (*i != 0xFF) {
             fw_present = 1;
+            break;
             break;
         }
     }
 
     if (!fw_present) {
         uart_write_str(UART0, "No firmware loaded.\n");
+        SysCtlReset(); // Reset device
         SysCtlReset(); // Reset device
         return;
     }

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+#!/usr/bin/env python
 
 # Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED
 # Approved for public release. Distribution unlimited 23-02181-25.
@@ -9,6 +10,7 @@ Bootloader Build Tool
 This tool is responsible for building the bootloader from source and copying
 the build outputs into the host tools directory for programming.
 """
+from util import *
 from util import *
 import os
 import pathlib
@@ -24,6 +26,7 @@ from cryptography.hazmat.backends import default_backend
 REPO_ROOT = pathlib.Path(__file__).parent.parent.absolute()
 BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
 ROOT_KEY = b"hi"
+
 
 
 def create_header_file(aes, hmac):
@@ -45,6 +48,7 @@ def create_header_file(aes, hmac):
 
 
         header_file.write("#endif // HEADER_H\n")
+
 
 
 
