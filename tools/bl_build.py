@@ -27,7 +27,7 @@ BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
 ROOT_KEY = b"hi"
 
 def create_header_file(aes, hmac, rsaPriv):
-    with open('../Team-8/tools/header.h', 'w') as header_file:
+    with open('./header.h', 'w') as header_file:
         header_file.write("#ifndef HEADER_H\n")
         header_file.write("#define HEADER_H\n\n")
         header_file.write(f"#define ENC_AES_KEY \"{aes}\"\n")
@@ -65,7 +65,7 @@ def key_derivation(root_key):
     
 
     hmac_key = hkdf.derive(ikm)
-    with open('../Team-8/tools/secret_build_output.txt', 'wb') as file:
+    with open('./secret_build_output.txt', 'wb') as file:
         key_arr = generate_and_encrypt(aes_key) # encrypts AES key with generated RSA key
         rsa_private = key_arr[0][1]
         rsa_public = key_arr[0][0]
