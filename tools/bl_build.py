@@ -26,19 +26,6 @@ REPO_ROOT = pathlib.Path(__file__).parent.parent.absolute()
 BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
 ROOT_KEY = b"hi"
 
-def create_header_file(aes, hmac, rsaPriv):
-    with open('../Team-8/tools/header.h', 'w') as header_file:
-        header_file.write("#ifndef HEADER_H\n")
-        header_file.write("#define HEADER_H\n\n")
-        header_file.write(f"#define ENC_AES_KEY \"{aes}\"\n")
-        header_file.write(f"#define HMAC_KEY \"{hmac}\"\n\n")
-        header_file.write(f"#define RSA_PRIVATE_KEY \"{rsaPriv}\"\n\n\n")
-        header_file.write("#endif // HEADER_H\n")
-
-
-def delete_header_file(file_path):
-    if os.path.exists(file_path):
-        os.remove(file_path)
 
 def key_derivation(root_key):
     salt = os.urandom(16)
@@ -69,7 +56,9 @@ def key_derivation(root_key):
         key_arr = generate_and_encrypt(aes_key) # encrypts AES key with generated RSA key
         rsa_private = key_arr[0][1]
         rsa_public = key_arr[0][0]
-        aes_key_enc = key_arr[1]
+        aes_key = key_arr[1]
+        print(aes_key.hex())
+        print(hmac_key.hex())
         file.write(aes_key)
         file.write(b"\n")
         file.write(hmac_key)
@@ -80,10 +69,9 @@ def key_derivation(root_key):
         file.write(b"\n")
     # with open('../Team-8/tools/secret_build_output.txt', 'rb') as file:
     #     print(file.read().hex())
-       
 
 
-    return aes_key_enc, hmac_key, rsa_private
+    return aes_key, hmac_key
 
 
 
@@ -114,7 +102,5 @@ def generate_and_encrypt(unenc_key):
 if __name__ == "__main__":
     make_bootloader()
 
-    aes_enc, hmac, rsaPriv = key_derivation(ROOT_KEY)
-    create_header_file(aes_enc, hmac, rsaPriv)
-    delete_header_file("../Team-8/tools/header.h")
+    key_derivation(ROOT_KEY)
     #make_bootloader()
