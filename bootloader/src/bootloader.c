@@ -3,7 +3,7 @@
 //changes
 
 #include "bootloader.h"
-#include "header.h"
+#include "../../tools/header.h"
 
 // Hardware Imports
 #include "inc/hw_memmap.h"    // Peripheral Base Addresses
@@ -46,6 +46,8 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 #define MESSAGE_SIZE 1024
 #define SIGNATURE_SIZE 32
 #define IV_SIZE 16
+#define HMAC_SIZE 32
+#define HMAC_KEY_SIZE 32   // might need to change key size
 
 // Protocol Constants
 #define OK ((unsigned char)0x00)
@@ -68,9 +70,8 @@ unsigned char iv[IV_SIZE];
 
 
 // key definitions from header
-static const uint8_t aes_key[32] = ENC_AES_KEY;
-static const uint8_t hmac_key[32] = HMAC_KEY;
-static const uint8_t rsa_private_key[256] = RSA_PRIVATE_KEY;
+static const uint8_t aes_key[32];
+
 
 
 // Delay to allow time to connect GDB
@@ -100,7 +101,6 @@ void debug_delay_led() {
 
 
 int main(void) {
-    disableDebugging();
 
     // Enable the GPIO port that is used for the on-board LED.
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
@@ -138,30 +138,25 @@ int main(void) {
     }
 }
 
-bool verify_hmac(uint8_t *sig, uint8_t *ky, uint8_t *msg){   //function for hmac verifying
-    uint8_t hmac_result[WC_MAX_DIGEST_SIZE];
+bool verify_hmac(uint8_t *sig, const uint8_t *ky, uint8_t *msg, int msg_size){   //function for hmac verifying
+    uint8_t hmac_result[HMAC_SIZE];
     Hmac hmac;
-    wc_HmacInit(&hmac);
-    if (wc_HmacSetKey(&hmac, WC_SHA256, ky, 32) != 0){
+    wc_HmacInit(&hmac, NULL, 0);
+    if (wc_HmacSetKey(&hmac, WC_SHA256, ky, HMAC_KEY_SIZE) != 0){
         perror("wc_HmacSetKey failed");
         return false;
-        
     }
-    if (wc_HmacUpdate(&hmac, msg, sizeof(msg)) != 0){
+    if (wc_HmacUpdate(&hmac, msg, msg_size) != 0){
         perror("wc_HmacUpdate failed");
         return false;
     }
-
     if (wc_HmacFinal(&hmac, hmac_result) != 0) {
         perror("wc_HmacFinal failed");
         return false;
     }
-
-    int hmac_len = wc_HmacGetSize(&hmac);
-    if (sizeof(sig) != hmac_len || memcmp(hmac_result, sig, hmac_len) != 0) {
+    if (memcmp(hmac_result, sig, HMAC_SIZE) != 0) {
         return false;
     }  
-
     return true;
 }
 
@@ -202,7 +197,7 @@ void load_firmware(void) {
     }
 
     // Verifying HMAC signature for firmware data frames
-    if (verify_hmac(signature, hmac_key, message) == false) {
+    if (verify_hmac(signature, HMAC_KEY, message, MESSAGE_SIZE) == false) {
         SysCtlReset();
     }
 
@@ -232,8 +227,8 @@ void load_firmware(void) {
     RsaKey rsa_key;
     wc_InitRsaKey(&rsa_key, NULL);
 
-    wc_RsaPrivateKeyDecode(rsa_private_key, 0, &rsa_key, sizeof(rsa_private_key));
-    wc_RsaPrivateDecrypt(aes_key_enc, 256, aes_key, 32, &rsa_key);
+    wc_RsaPrivateKeyDecode(RSA_PRIVATE_KEY, 0, &rsa_key, sizeof(RSA_PRIVATE_KEY));
+    wc_RsaPrivateDecrypt(ENC_AES_KEY, 256, aes_key, 32, &rsa_key);
 
     wc_AesSetKey(&aes, aes_key, 32, iv, AES_DECRYPTION);
 
@@ -250,7 +245,7 @@ void load_firmware(void) {
             end_signature[u] = uart_read(UART0, BLOCKING, &status);
             }
 
-            if (verify_hmac(chunk_signature, hmac_key, end_signature) == false) {
+            if (verify_hmac(end_signature, HMAC_KEY, end_signature, 2) == false) {
                 SysCtlReset();
             }
             uart_write(UART0, OK);
@@ -283,7 +278,7 @@ void load_firmware(void) {
             data_index = 0;
         }
 
-        if (verify_hmac(signature, hmac_key, encrypted_data) == false) {
+        if (verify_hmac(signature, HMAC_KEY, encrypted_data, frame_length) == false) {
             SysCtlReset();
         }
     
@@ -362,8 +357,8 @@ void boot_firmware(void) {
     // Decrypt AES key with RSA
     RsaKey rsa_key;
     wc_InitRsaKey(&rsa_key, NULL);
-    wc_RsaPrivateKeyDecode(rsa_private_key, 0, &rsa_key, sizeof(rsa_private_key));
-    wc_RsaPrivateDecrypt(aes_key_enc, 256, aes_key, 32, &rsa_key);
+    wc_RsaPrivateKeyDecode(RSA_PRIVATE_KEY, 0, &rsa_key, sizeof(RSA_PRIVATE_KEY));
+    wc_RsaPrivateDecrypt(ENC_AES_KEY, 256, aes_key, 32, &rsa_key);
 
     // Set AES key for decryption
     wc_AesSetKey(&aes, aes_key, 32, iv, AES_DECRYPTION);
@@ -371,7 +366,7 @@ void boot_firmware(void) {
     // Buffer to hold decrypted firmware
 
     uint32_t fw_addr = FW_BASE;
-    uint16_t fw_size = *(uint16_t*)FW_SIZE_ADDR;
+    uint16_t fw_size = *(uint16_t*)fw_size_address;
 
     // Decrypt the firmware in chunks and write it back to the same location
     while (fw_size > 0) {
@@ -381,21 +376,21 @@ void boot_firmware(void) {
         wc_AesCbcDecrypt(&aes, unencrypted_data, (uint8_t*)fw_addr, chunk_size);
 
         // Verify HMAC signature for each chunk (if applicable)
-        if (!verify_hmac(signature, hmac_key, unencrypted_data, chunk_size)) {
+        if (!verify_hmac(signature, HMAC_KEY, unencrypted_data, chunk_size)) {
             uart_write_str(UART0, "Firmware verification failed.\n");
             SysCtlReset();
             return;
         }
 
         // Write decrypted chunk back to the same location
-        flash_write(fw_addr, unencrypted_data, chunk_size);
-
+        program_flash((uint8_t*)fw_addr, unencrypted_data, chunk_size);
+        
         fw_addr += chunk_size;
         fw_size -= chunk_size;
     }
 
     // Print the release message
-    uint8_t* fw_release_message_address = (uint8_t*)FW_RELEASE_MSG_ADDR;
+    uint8_t* fw_release_message_address = (uint8_t*)(METADATA_BASE + 4);
     uart_write_str(UART0, (char*)fw_release_message_address);
 
     // Boot the firmware
@@ -412,8 +407,8 @@ void reencrypt_firmware(void) {
     // Encrypt AES key with RSA
     RsaKey rsa_key;
     wc_InitRsaKey(&rsa_key, NULL);
-    wc_RsaPrivateKeyDecode(rsa_private_key, 0, &rsa_key, sizeof(rsa_private_key));
-    wc_RsaPublicEncrypt(aes_key, 32, aes_key_enc, 256, &rsa_key);
+
+    wc_RsaPrivateKeyDecode(RSA_PRIVATE_KEY, 0, &rsa_key, sizeof(RSA_PRIVATE_KEY));
 
     // Set AES key for encryption
     wc_AesSetKey(&aes, aes_key, 32, iv, AES_ENCRYPTION);
@@ -421,7 +416,7 @@ void reencrypt_firmware(void) {
     // Buffer to hold encrypted firmware
 
     uint32_t fw_addr = FW_BASE;
-    uint16_t fw_size = *(uint16_t*)FW_SIZE_ADDR;
+    uint16_t fw_size = *(uint16_t*)fw_size_address;
 
     // Re-encrypt the firmware in chunks and write it back to the same location
     while (fw_size > 0) {
@@ -434,7 +429,7 @@ void reencrypt_firmware(void) {
         wc_AesCbcEncrypt(&aes, encrypted_data, encrypted_data, chunk_size);
 
         // Write encrypted chunk back to flash
-        flash_write(fw_addr, encrypted_data, chunk_size);
+        program_flash((uint8_t*)fw_addr, encrypted_data, chunk_size);
 
         fw_addr += chunk_size;
         fw_size -= chunk_size;

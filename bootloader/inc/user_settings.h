@@ -68,7 +68,7 @@ extern "C" {
 
 /* Wolf Single Precision Math */
 #undef WOLFSSL_SP
-#if 0
+#if 1
     #define WOLFSSL_SP
     #define WOLFSSL_SP_SMALL      /* use smaller version of code */
     #define WOLFSSL_HAVE_SP_RSA
@@ -145,7 +145,7 @@ extern "C" {
     #endif
 
     /* RSA Public only */
-    #if 1
+    #if 0
         #define WOLFSSL_RSA_VERIFY_ONLY
         #define WOLFSSL_RSA_VERIFY_INLINE
         #define WOLFSSL_RSA_PUBLIC_ONLY
