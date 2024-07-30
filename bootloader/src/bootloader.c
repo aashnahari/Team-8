@@ -26,10 +26,6 @@
 #include "wolfssl/wolfcrypt/aes.h"
 #include "wolfssl/wolfcrypt/sha.h"
 #include "wolfssl/wolfcrypt/rsa.h"
-#include <wolfssl/wolfcrypt/sha256.h>
-#include <wolfssl/wolfcrypt/hmac.h>
-#include <wolfssl/wolfcrypt/error-crypt.h>
-
 
 // Forward Declarations
 void load_firmware(void);
@@ -141,24 +137,46 @@ int main(void) {
     }
 }
 
-bool verify_hmac(uint8_t *sig, uint8_t *ky, uint8_t *msg, int msg_size){   //function for hmac verifying
-    uint8_t hmac_result[HMAC_SIZE];
-    Hmac hmac;
-    wc_HmacInit(&hmac, NULL, 0);
-    if (wc_HmacSetKey(&hmac, WC_SHA256, ky, HMAC_KEY_SIZE) != 0){
-        perror("wc_HmacSetKey failed");
-        return false;
-        
-    }
-    if (wc_HmacUpdate(&hmac, msg, msg_size) != 0){
-        perror("wc_HmacUpdate failed");
-        return false;
-    }
 
-    if (wc_HmacFinal(&hmac, hmac_result) != 0) {
-        perror("wc_HmacFinal failed");
-        return false;
-    }
+ /*
+ * Load the firmware into flash.
+ */
+void load_firmware(void) {
+    int frame_length = 0;
+    int read = 0;
+    uint32_t rcv = 0;
+
+    uint32_t data_index = 0;
+    uint32_t page_addr = FW_BASE;
+    uint32_t version = 0;
+    uint32_t size = 0;
+
+    
+
+
+
+
+
+
+/// ------------------------------------------------------------------- CHANGES
+    bool verify_hmac(uint8_t *sig, uint8_t *ky, uint8_t *msg){   //function for hmac verifying
+        uint8_t hmac_result[WC_MAX_DIGEST_SIZE];
+        Hmac hmac;
+        wc_HmacInit(&hmac);
+        if (wc_HmacSetKey(&hmac, WC_SHA256, ky, 32) != 0){
+            perror("wc_HmacSetKey failed");
+            return false;
+            
+        }
+        if (wc_HmacUpdate(&hmac, msg, sizeof(msg)) != 0){
+            perror("wc_HmacUpdate failed");
+            return false;
+        }
+
+        if (wc_HmacFinal(&hmac, hmac_result) != 0) {
+            perror("wc_HmacFinal failed");
+            return false;
+        }
 
   
     if (memcmp(hmac_result, sig, HMAC_SIZE) != 0) {
@@ -210,9 +228,53 @@ void load_firmware(void) {
     for (int k = 0; k < SIGNATURE_SIZE; ++k) {
         signature[k] = uart_read(UART0, BLOCKING, &status);
     }
+    //Verifying hmac signature for firmware data frames
+    if (verify_hmac(hmac_signature, verify_key, message) == false){
+        SysCtlReset();
+    }
 
-    // Verifying HMAC signature for firmware data frames
-    if (verify_hmac(signature, hmac_key, message, 2 + 2 + MESSAGE_SIZE) == false) {      //might be a good idea to include version number and data size in hash
+    int track = 1060; 
+    while (track < fw_size){
+        //get the size of the current frame data
+        rcv = uart_read(UART0, BLOCKING, &read);
+        uint16_t chunk_size = (uint16_t)rcv;
+        rcv = uart_read(UART0, BLOCKING, &read);
+        chunk_size |= (uint16_t)rcv << 8;
+
+        uint8_t iv[16];
+        for (int i = 0; i < 16; i++){
+            iv[i] = uart_read(UART0, BLOCKING, &read);
+        }
+
+
+        uint8_t data_chunk[512];
+        for (int i = 0; i < 512; i++){
+            data_chunk[i] = uart_read(UART0, BLOCKING, &read);
+        }
+
+        uint8_t chunk_signature[32];
+        for (int i = 0; i < 32; i++){
+            chunk_signature[i] = uart_read(UART0, BLOCKING, &read);
+        }
+        if(verify_hmac(chunk_signature, verify_key, data_chunk) = false){
+            SysCtlReset();
+        }
+
+        track += 512
+    }
+
+    //verify signature for end frame
+    uint8_t end_msg[2];
+    for (int i = 0; i < 2; i++){
+        end_msg[i] = uart_read(UART0, BLOCKING, &read);
+    }
+
+    uint8_t end_signature[32];
+    for (int i = 0; i < 2; i++){
+        end_signature[i] = uart_read(UART0, BLOCKING, &read);
+    }
+
+    if(verify_hmac(end_signature, verify_key, end_msg) = false){
         SysCtlReset();
     }
 

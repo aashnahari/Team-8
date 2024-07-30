@@ -12,7 +12,6 @@ from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 from pwn import *
-from Crypto.Hash import HMAC, SHA256
 def sign(ky, frame_data):  #call 'sign' whenever need to sign
     #-----------------------------------------------------------------------
     signature = (HMAC.new(ky, frame_data, digestmod=SHA256)).digest()
@@ -117,4 +116,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # protect_firmware(infile=args.infile, outfile=args.outfile, version=int(args.version), message=args.message)
+    protect_firmware(infile=args.infile, outfile=args.outfile, version=int(args.version), message=args.message)
