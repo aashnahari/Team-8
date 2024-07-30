@@ -1,4 +1,4 @@
-/usr/bin/env python
+#!/usr/bin/env python
 
 # hey, it pushed!
 # Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED
