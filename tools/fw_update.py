@@ -38,10 +38,11 @@ FRAME_SIZE = 562
 def send_metadata(ser, metadata, debug=False):
     assert(len(metadata) == 1060)
     version = u16(metadata[:2], endian='little')
-    size = u16(metadata[2:], endian='little')
+    size = u16(metadata[2:4], endian='little')
+    #message_length = u16(metadata[4:6], endian = 'little')
     print(f"Version: {version}\nSize: {size} bytes\n")
 
-    # Handshake for update
+    # Handshake for update 
     ser.write(b"U")
 
     print("Waiting for bootloader to enter update mode...")
@@ -49,14 +50,16 @@ def send_metadata(ser, metadata, debug=False):
         print("got a byte")
         pass
 
-    # Send size and version to bootloader.
-    # if debug:
-    #     print(metadata)
+    #Send size and version to bootloader.
+    #if debug:
+        #print(metadata)
 
+    
     ser.write(metadata)
-
+    print('pass')
     # Wait for an OK from the bootloader.
     resp = ser.read(1)
+    print(resp)
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
 
@@ -64,8 +67,8 @@ def send_metadata(ser, metadata, debug=False):
 def send_frame(ser, frame, debug=False):
     ser.write(frame)  # Write the frame...
 
-    # if debug:
-    #     print_hex(frame)
+    if debug:
+        print_hex(frame)
 
     resp = ser.read(1)  # Wait for an OK from the bootloader
 
@@ -74,8 +77,8 @@ def send_frame(ser, frame, debug=False):
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
 
-    # if debug:
-    #     print("Resp: {}".format(ord(resp)))
+    if debug:
+        print("Resp: {}".format(ord(resp)))
 
 
 def update(ser, infile, debug):
@@ -86,6 +89,11 @@ def update(ser, infile, debug):
     metadata = firmware_blob[:1060]
     firmware = firmware_blob[1060:-34]
     end = firmware_blob[-34:]
+    print_hex(metadata)
+    print('\n')
+    print_hex(firmware)
+    print('\n')
+    print_hex(end)
 
     #sending metadata (version_frame) first to bootloader to verify the version
     send_metadata(ser, metadata, debug=debug)

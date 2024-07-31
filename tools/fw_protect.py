@@ -23,32 +23,39 @@ def sign(ky, frame_data):  #call 'sign' whenever need to sign
 
 
 def protect_firmware(infile, outfile, version, message):
+    # read key from secrets file here, decrypt, save to variable
+    with open("./secret_build_output.txt", "rb") as secret:
+        secret_arr = secret.readlines()
+        usable_aes_key = secret_arr[0]
+        #print_hex(usable_aes_key)
+        secret_hmac_key = secret_arr[1]
 # FRAME 0: METADATA
     # Load firmware binary from infile
     with open(infile, "rb") as fp:
         raw_firmware = fp.read()
-    firmware = raw_firmware
+    
 
     # Packing metadata
-    metadata = p16(version, endian='little') + p16(len(firmware), endian='little')
-
+    metadata = p16(version, endian='little') + p16(len(raw_firmware), endian='little') 
+    #print_hex(metadata)
     # padding message to be 1024 bytes (biggest size possible)
     message_length = len(message.encode())
     if message_length < 1024:
         # Pad message with zero bytes if it's shorter than 1024 bytes
-        padded_message = message.encode() + b'\x00' * (1024 - message_length)
+        padded_message = message.encode() + (b'\x00' * (1024 - message_length))
     elif message_length == 1024:
         padded_message = message.encode()
     else:
         # If the message is longer than 1024 bytes, truncate it (but this shouldn't happen since the 
         # parameters for the challenge said that the largest message to handle would be 1 kB)
         padded_message = message.encode()[:1024]
-
+    #message_length = p16(message_length, endian='little')
     # Create version frame
     version_frame = metadata + padded_message
+    print(version_frame)
 
     # create signature for frame
-    version_sig = sign(secret_hmac_key, version_frame)
+    version_sig = sign(secret_hmac_key, metadata)
 
     # Append signature to frame
     version_frame = version_frame + version_sig
@@ -61,14 +68,11 @@ def protect_firmware(infile, outfile, version, message):
 # FRAME 1: FIRMWARE DATA
     
       # pad the firmware here
-    while len(raw_firmware) % 512 != 0:
-        raw_firmware += b'0x00'
+ 
+    while (len(raw_firmware) % 512) != 0:
+        raw_firmware += b'\x00'
+        
 
-    # read key from secrets file here, decrypt, save to variable
-    with open("./secret_build_output.txt", "rb") as secret:
-        secret_arr = secret.readlines()
-        usable_aes_key = secret_arr[0]
-        secret_hmac_key = secret_arr[1]
 
     # encryption of the firmware here
     iv = get_random_bytes(AES.block_size) # generates random iv

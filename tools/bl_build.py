@@ -39,7 +39,7 @@ def create_header_file(aes, hmac):
         hmac_hex = bytes_to_hex_string(hmac)
 
         header_file.write("static const unsigned char AES_KEY[] = { ")
-        header_file.write(', '.join(f'0x{aes_hex[i:i+2]}' for i in range(0, len(aes_hex), 2)))
+        header_file.write(', '.join(f'0x{aes_hex[i:i+2]}' for i in range(0, len(aes_hex)-1, 2)))
         header_file.write(" };\n")
 
         header_file.write("static const unsigned char HMAC_KEY[] = { ")
@@ -66,7 +66,7 @@ def key_derivation(root_key):
 
     hkdf = HKDF(
     algorithm=hashes.SHA256(),
-    length=len(ROOT_KEY),  # Length of the keying material in bytes
+    length=31,  # Length of the keying material in bytes
     salt=salt,
     info=info1,
     backend=backend)
@@ -74,13 +74,16 @@ def key_derivation(root_key):
 
     hkdf = HKDF(
     algorithm=hashes.SHA256(),
-    length=len(ROOT_KEY),  # Length of the keying material in bytes
+    length=31,  # Length of the keying material in bytes
     salt=salt,
     info=info2,
     backend=backend)
     
-
+    
     hmac_key = hkdf.derive(ikm)
+    print('AES KEY HERE: ')
+    print_hex(aes_key)
+    print('\n')
     with open('./secret_build_output.txt', 'wb') as file:
         file.write(aes_key)
         file.write(b"\n")
@@ -110,7 +113,7 @@ def make_bootloader() -> bool:
 
 
 if __name__ == "__main__":
-    aes_enc, hmac = key_derivation(ROOT_KEY)
-    create_header_file(aes_enc, hmac)
+    aes_k, hmac = key_derivation(ROOT_KEY)
+    create_header_file(aes_k, hmac)
     make_bootloader()
     delete_header_file("../Team-8/tools/header.h")
