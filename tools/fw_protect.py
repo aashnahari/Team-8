@@ -39,33 +39,39 @@ def protect_firmware(infile, outfile, version, message):
     with open(infile, "rb") as fp:
         raw_firmware = fp.read()
     
+    iv = get_random_bytes(AES.block_size) # generates random iv
+    aes_crypt = AES.new(usable_aes_key, AES.MODE_CBC, iv)
+    
 
     # Packing metadata
     metadata = p16(version, endian='little') + p16(len(raw_firmware), endian='little') 
-    #print_hex(metadata)
+    while len(metadata) != 16:
+        metadata += b'\x00'
+    enc_meta = aes_crypt.encrypt(metadata)
     # padding message to be 1024 bytes (biggest size possible)
     message_length = len(message.encode())
     padded_message = message.encode()
     while len(padded_message) != 1024:
         padded_message += b'\x00'
-    #if message_length == 1024:
-        #padded_message = message.encode()
-    #else:
+    if message_length == 1024:
+        padded_message = message.encode()
+    else:
         # If the message is longer than 1024 bytes, truncate it (but this shouldn't happen since the 
         # parameters for the challenge said that the largest message to handle would be 1 kB)
-        #padded_message = message.encode()[:1024]
-    #message_length = p16(message_length, endian='little')
+        padded_message = message.encode()[:1024]
+    
     # Create version frame
-    #print(padded_message)
-    version_frame = metadata + padded_message
-    #print(version_frame)
+    version_frame = iv + enc_meta + padded_message
 
     # create signature for frame
-    
     version_sig = sign(secret_hmac_key, metadata)
     
     # Append signature to frame
     version_frame = version_frame + version_sig
+    print('metadata norm: ')
+    print_hex(metadata)
+    print('\n enc meta')
+    print_hex(enc_meta)
 
     # Write version frame to outfile (writing frame 0 first specifically)
     with open(outfile, "wb+") as out_fp:
@@ -82,8 +88,6 @@ def protect_firmware(infile, outfile, version, message):
 
 
     # encryption of the firmware here
-    iv = get_random_bytes(AES.block_size) # generates random iv
-    aes_crypt = AES.new(usable_aes_key, AES.MODE_CBC, iv)
     firmware = aes_crypt.encrypt(raw_firmware)
 
     # Split the now encrypted firmware into frames
@@ -98,8 +102,8 @@ def protect_firmware(infile, outfile, version, message):
         data_sig = sign(secret_hmac_key, chunk)
 
         # assemble the frame
-        data_frame = chunk_size + chunk + iv + data_sig 
-        print_hex(data_frame)
+        data_frame = chunk_size + chunk+ data_sig 
+        
 
         # Write frame into outfile
         with open(outfile, "ab+") as out_fp:
@@ -107,10 +111,7 @@ def protect_firmware(infile, outfile, version, message):
 
 # FRAME 2: END
     end_message = b'\x00\x00'
-    
-    end_sig = sign(secret_hmac_key, end_message)
-    
-    end_frame = end_message + end_sig
+    end_frame = end_message
 
     # Append end frame to outfile
     with open(outfile, "ab+") as out_fp:

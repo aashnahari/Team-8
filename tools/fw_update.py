@@ -31,16 +31,16 @@ from util import *
 
 ser = serial.Serial("/dev/ttyACM0", 115200)
 
-RESP_OK = b"\x00"
-FRAME_SIZE = 562
+RESP_OK = b"\x04"
+FRAME_SIZE = 562 - 16 #we took away the IV
 
 
-def send_metadata(ser, metadata, debug=False):
-    assert(len(metadata) == 1060)
-    version = u16(metadata[:2], endian='little')
-    size = u16(metadata[2:4], endian='little')
-    #message_length = u16(metadata[4:6], endian = 'little')
-    print(f"Version: {version}\nSize: {size} bytes\n")
+def send_frame_zero(ser, frame_zero, debug=False):
+    #assert(len(frame_zero) == 1060)
+    iv = frame_zero[:16]
+    print(f'iv is')
+    print_hex(iv)
+    
 
     # Handshake for update 
     ser.write(b"U")
@@ -51,28 +51,30 @@ def send_metadata(ser, metadata, debug=False):
         pass
 
     #Send size and version to bootloader.
-    #if debug:
-        #print(metadata)
+    if debug:
+        print(frame_zero)
 
 
-    ser.write(metadata)
+    ser.write(frame_zero)
     # Wait for an OK from the bootloader.
     resp = ser.read(1)
-    print('moving past metadata')
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
-
+    print('moving past frame_zero')
 
 def send_frame(ser, frame, debug=False):
+    print('sending frame next')
     ser.write(frame)  # Write the frame...
+    print_hex(frame)
 
     if debug:
         print_hex(frame)
 
     resp = ser.read(1)  # Wait for an OK from the bootloader
-    print('bootloader okayed  a firmware frame')
+    print_hex(resp)
+    print(f'bootloader okayed  a firmware frame,')
 
-    #time.sleep(0.1)
+    time.sleep(0.1)
 
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
@@ -86,38 +88,32 @@ def update(ser, infile, debug):
     with open(infile, "rb") as fp:
         firmware_blob = fp.read()
 
-    metadata = firmware_blob[:1060]
+    frame_zero = firmware_blob[:1060]
     firmware = firmware_blob[1060:-34]
     end = firmware_blob[-34:]
-    '''print_hex(metadata)
+    '''print_hex(frame_zero)
     print('\n')
     print_hex(firmware)
     print('\n')
     print_hex(end)'''
 
-    #sending metadata (version_frame) first to bootloader to verify the versioning
-    send_metadata(ser, metadata, debug=debug)
-
-   
+    #sending frame_zero (version_frame) first to bootloader to verify the versioning
+    send_frame_zero(ser, frame_zero, debug=debug)
+    
     ##EACH FRAME IS 562
     for idx, frame_start in enumerate(range(0, len(firmware), FRAME_SIZE)):
         # getting each (already divided) frame from firmware_protected.bin
-        
         frame = firmware[frame_start : frame_start+FRAME_SIZE]
-        print('made the frame:' )
-        print_hex(frame)
-        
-        #just the frame length
-        send_frame(ser, frame[:2], debug=debug)
-        print('sent just the length')
-        
-        #rest of the frame 
-        send_frame(ser, frame[2:], debug=debug)
+        if idx == 5:
+            print(f'frame start: {frame_start}')
+            print_hex(frame)
+        send_frame(ser, frame, debug=debug)
         print(f"\nWrote frame {idx} ({len(frame)} bytes)")
 
-    print("Done writing firmware.")
+    print("\nDone writing firmware.")
 
     # Send a zero length payload to tell the bootlader to finish writing it's page.
+    print_hex(end)
     ser.write(end)
     resp = ser.read(1)  # Wait for an OK from the bootloader
     if resp != RESP_OK:
