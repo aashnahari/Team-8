@@ -32,12 +32,12 @@ from util import *
 ser = serial.Serial("/dev/ttyACM0", 115200)
 
 RESP_OK = b"\x04"
-FRAME_SIZE = 562 - 16 #we took away the IV
+FRAME_SIZE = 546 #we took away the IV
 
 def read_byte():
     byte = ser.read(1)
     if byte.decode == b'W':
-        raise RuntimeError("ERROR: Bootloader freaking reset!??!")
+        return RuntimeError("ERROR: Bootloader freaking reset!??!")
     while byte != b'\x04':
         byte = ser.read(1)
         print(byte)
@@ -76,7 +76,8 @@ def send_frame_zero(ser, frame_zero, debug=False):
 def send_frame(ser, frame, debug=False):
     print('sending frame next')
     ser.write(frame)  # Write the frame...
-    print_hex(frame)
+    print('')
+    print_hex(frame[-16:])
     print(f'length of frame {len(frame)}')
 
     if debug:
@@ -112,13 +113,12 @@ def update(ser, infile, debug):
     #sending frame_zero (version_frame) first to bootloader to verify the versioning
     send_frame_zero(ser, frame_zero, debug=debug)
     
-    ##EACH FRAME IS 562
+    ##EACH FRAME IS 546
     for idx, frame_start in enumerate(range(0, len(firmware), FRAME_SIZE)):
         # getting each (already divided) frame from firmware_protected.bin
         frame = firmware[frame_start : frame_start+FRAME_SIZE]
-        if idx == 5:
-            print(f'frame start: {frame_start}')
-            print_hex(frame)
+        print(f'frame start: {frame_start}')
+        print_hex(frame)
         send_frame(ser, frame, debug=debug)
         print(f"\nWrote frame {idx} ({len(frame)} bytes)")
 

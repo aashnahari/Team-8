@@ -66,12 +66,12 @@ def protect_firmware(infile, outfile, version, message):
     
     # Append signature to frame
     version_frame = version_frame + version_sig
-    print('\nmetadata norm: ')
+    """ print('\nmetadata norm: ')
     print_hex(metadata)
     print('\n enc meta')
     print_hex(enc_meta)
     print('\nsignature:')
-    print_hex(version_sig)
+    print_hex(version_sig) """
     
 
     # Write version frame to outfile (writing frame 0 first specifically)
@@ -101,6 +101,8 @@ def protect_firmware(infile, outfile, version, message):
 
         # SIGNATURE
         data_sig = sign(secret_hmac_key, chunk)
+        print(f'\nsignature for {i / 512}')
+        print_hex(data_sig)
 
         # assemble the frame
         data_frame = chunk_size + chunk+ data_sig 
