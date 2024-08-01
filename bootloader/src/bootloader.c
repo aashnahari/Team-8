@@ -49,8 +49,6 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 #define HMAC_SIZE 32
 #define HMAC_KEY_SIZE 32   // might need to change key size
 #define IV_SIZE 16
-#define HMAC_SIZE 32
-#define HMAC_KEY_SIZE 32   // might need to change key size
 
 // Protocol Constants
 #define OK ((unsigned char)0x00)
@@ -71,6 +69,7 @@ unsigned char signature[SIGNATURE_SIZE];
 unsigned char end_signature[SIGNATURE_SIZE];
 unsigned char end_signature[SIGNATURE_SIZE];
 unsigned char iv[IV_SIZE];
+uint8_t metsig[4];
 
 
 
@@ -157,7 +156,7 @@ bool verify_hmac(uint8_t *sig, const uint8_t *ky, uint8_t *msg, int msg_size){  
         //perror("wc_HmacFinal failed");
         return false;
     }
-    if (memcmp(*hmac_result, sig, HMAC_SIZE) != 0) {
+    if (memcmp(hmac_result, sig, HMAC_SIZE) != 0) {
         return false;
     }  
     return true;
@@ -171,7 +170,7 @@ bool verify_hmac(uint8_t *sig, const uint8_t *ky, uint8_t *msg, int msg_size){  
 
 
 void load_firmware(void) {
-    int frame_length = 0;
+    uint32_t frame_length = 0;
     int status = 0;
     uint32_t rcv = 0;
 
@@ -184,14 +183,20 @@ void load_firmware(void) {
 
     // Reading the frame 0 (VERSION_FRAME)
     rcv = uart_read(UART0, BLOCKING, &status);
+    metsig[0] = rcv;
     version = (uint32_t)rcv;
     rcv = uart_read(UART0, BLOCKING, &status);
+    metsig[1] = rcv;
     version |= (uint32_t)rcv << 8;
 
     rcv = uart_read(UART0, BLOCKING, &status);
+    metsig[2] = rcv;
     size = (uint32_t)rcv;
     rcv = uart_read(UART0, BLOCKING, &status);
+    metsig[3] = rcv;
     size |= (uint32_t)rcv << 8;
+    
+
     
     //getting (unpadded) message length
     /*rcv = uart_read(UART0, BLOCKING, &status);
@@ -215,7 +220,7 @@ void load_firmware(void) {
 
 
     // Verifying HMAC signature for firmware data frames
-    if (verify_hmac(signature, HMAC_KEY, metadata, 4) == false) {
+    if (verify_hmac(signature, HMAC_KEY, metsig, 4) == false) {
         SysCtlReset();
     }
 
@@ -246,22 +251,20 @@ void load_firmware(void) {
     uart_write(UART0, OK);
 
     // Decrypt and verify data frames
-  
     Aes aes;
     wc_AesInit(&aes, NULL, INVALID_DEVID);
-    wc_AesSetKey(&aes, AES_KEY, 32, iv, AES_DECRYPTION);
+   
 
 // Loop to handle frames
     while (1) {
         rcv = uart_read(UART0, BLOCKING, &status);
-        frame_length = (int)rcv << 8;
+        frame_length = (uint32_t)rcv;
         rcv = uart_read(UART0, BLOCKING, &status);
-        frame_length += (int)rcv;
+        frame_length |= (uint32_t)rcv << 8;
+   
 
         //if this is the end frame, then wrap up (verify end sig and then stop)
-
-        //if this is the end frame, then wrap up (verify end sig and then stop)
-        if (frame_length == 0x0000) {
+        if (frame_length == 0) {
             for (int u = 0; u < SIGNATURE_SIZE; ++u) {
             end_signature[u] = uart_read(UART0, BLOCKING, &status);
             }
@@ -284,6 +287,8 @@ void load_firmware(void) {
         for (int b = 0; b < IV_SIZE; ++b) {
             iv[b] = uart_read(UART0, BLOCKING, &status);
         }
+
+         wc_AesSetKey(&aes, AES_KEY, 32, iv, AES_DECRYPTION);
 
 
         for (int c = 0; c < SIGNATURE_SIZE; ++c) {

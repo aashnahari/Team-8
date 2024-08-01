@@ -34,7 +34,7 @@ def create_header_file(aes, hmac):
         header_file.write("#ifndef HEADER_H\n")
         header_file.write("#define HEADER_H\n\n")
 
-        # Convert binary data to hex string and format for C
+        # Convert the keys to be written in the header for C coding
         aes_hex = bytes_to_hex_string(aes)
         hmac_hex = bytes_to_hex_string(hmac)
 
@@ -51,13 +51,15 @@ def create_header_file(aes, hmac):
 
 
 
-
+#function to delete the header after building bootloader.bin
+#prevents unauthorized access to the header file
 def delete_header_file(file_path):
     if os.path.exists(file_path):
         os.remove(file_path)
 
+#getting rid of the KDF for simplicity sake
 def key_derivation(root_key):
-    salt = os.urandom(16)
+    '''salt = os.urandom(16)
     info1 = b"AES key"
     info2 = b"HMAC key"
     backend = default_backend()
@@ -80,19 +82,16 @@ def key_derivation(root_key):
     backend=backend)
     
     
-    hmac_key = hkdf.derive(ikm)
-    print('AES KEY HERE: ')
-    print_hex(aes_key)
-    print('\n')
+    hmac_key = hkdf.derive(ikm)'''
+    # randomly generating 32-byte keys to use
+    aes_key = os.urandom(32)
+    hmac_key = os.urandom(32)
     with open('./secret_build_output.txt', 'wb') as file:
         file.write(aes_key)
-        file.write(b"\n")
         file.write(hmac_key)
-        file.write(b"\n")
-    # with open('../Team-8/tools/secret_build_output.txt', 'rb') as file:
-    #     print(file.read().hex())
 
     return aes_key, hmac_key
+    
 
 
 

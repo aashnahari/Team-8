@@ -54,12 +54,11 @@ def send_metadata(ser, metadata, debug=False):
     #if debug:
         #print(metadata)
 
-    
+
     ser.write(metadata)
-    print('pass')
     # Wait for an OK from the bootloader.
     resp = ser.read(1)
-    print(resp)
+    print('moving past metadata')
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
 
@@ -71,8 +70,9 @@ def send_frame(ser, frame, debug=False):
         print_hex(frame)
 
     resp = ser.read(1)  # Wait for an OK from the bootloader
+    print('bootloader okayed  a firmware frame')
 
-    time.sleep(0.1)
+    #time.sleep(0.1)
 
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
@@ -89,23 +89,31 @@ def update(ser, infile, debug):
     metadata = firmware_blob[:1060]
     firmware = firmware_blob[1060:-34]
     end = firmware_blob[-34:]
-    print_hex(metadata)
+    '''print_hex(metadata)
     print('\n')
     print_hex(firmware)
     print('\n')
-    print_hex(end)
+    print_hex(end)'''
 
-    #sending metadata (version_frame) first to bootloader to verify the version
+    #sending metadata (version_frame) first to bootloader to verify the versioning
     send_metadata(ser, metadata, debug=debug)
 
-
+   
     ##EACH FRAME IS 562
     for idx, frame_start in enumerate(range(0, len(firmware), FRAME_SIZE)):
-        
         # getting each (already divided) frame from firmware_protected.bin
-        frame = firmware[frame_start : frame_start + FRAME_SIZE]
-        send_frame(ser, frame, debug=debug)
-        print(f"Wrote frame {idx} ({len(frame)} bytes)")
+        
+        frame = firmware[frame_start : frame_start+FRAME_SIZE]
+        print('made the frame:' )
+        print_hex(frame)
+        
+        #just the frame length
+        send_frame(ser, frame[:2], debug=debug)
+        print('sent just the length')
+        
+        #rest of the frame 
+        send_frame(ser, frame[2:], debug=debug)
+        print(f"\nWrote frame {idx} ({len(frame)} bytes)")
 
     print("Done writing firmware.")
 
@@ -114,7 +122,7 @@ def update(ser, infile, debug):
     resp = ser.read(1)  # Wait for an OK from the bootloader
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded to zero length frame with {}".format(repr(resp)))
-    print(f"Wrote zero length frame (2 bytes)")
+    print(f"Wrote end frame (2 bytes)")
 
     return ser
 

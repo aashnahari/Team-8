@@ -25,12 +25,17 @@ def sign(ky, frame_data):  #call 'sign' whenever need to sign
 def protect_firmware(infile, outfile, version, message):
     # read key from secrets file here, decrypt, save to variable
     with open("./secret_build_output.txt", "rb") as secret:
-        secret_arr = secret.readlines()
-        usable_aes_key = secret_arr[0]
-        #print_hex(usable_aes_key)
-        secret_hmac_key = secret_arr[1]
+        secret_arr = secret.read()
+        usable_aes_key = secret_arr[0:32]
+        print('aes key: ')
+        print_hex(usable_aes_key)
+        print('\nhmac key: ')
+        secret_hmac_key = secret_arr[32:]
+        print_hex(secret_hmac_key)
 # FRAME 0: METADATA
     # Load firmware binary from infile
+    
+
     with open(infile, "rb") as fp:
         raw_firmware = fp.read()
     
@@ -40,23 +45,25 @@ def protect_firmware(infile, outfile, version, message):
     #print_hex(metadata)
     # padding message to be 1024 bytes (biggest size possible)
     message_length = len(message.encode())
-    if message_length < 1024:
-        # Pad message with zero bytes if it's shorter than 1024 bytes
-        padded_message = message.encode() + (b'\x00' * (1024 - message_length))
-    elif message_length == 1024:
-        padded_message = message.encode()
-    else:
+    padded_message = message.encode()
+    while len(padded_message) != 1024:
+        padded_message += b'\x00'
+    #if message_length == 1024:
+        #padded_message = message.encode()
+    #else:
         # If the message is longer than 1024 bytes, truncate it (but this shouldn't happen since the 
         # parameters for the challenge said that the largest message to handle would be 1 kB)
-        padded_message = message.encode()[:1024]
+        #padded_message = message.encode()[:1024]
     #message_length = p16(message_length, endian='little')
     # Create version frame
+    #print(padded_message)
     version_frame = metadata + padded_message
-    print(version_frame)
+    #print(version_frame)
 
     # create signature for frame
+    
     version_sig = sign(secret_hmac_key, metadata)
-
+    
     # Append signature to frame
     version_frame = version_frame + version_sig
 
@@ -91,7 +98,8 @@ def protect_firmware(infile, outfile, version, message):
         data_sig = sign(secret_hmac_key, chunk)
 
         # assemble the frame
-        data_frame = iv + chunk_size + chunk + data_sig 
+        data_frame = chunk_size + chunk + iv + data_sig 
+        print_hex(data_frame)
 
         # Write frame into outfile
         with open(outfile, "ab+") as out_fp:
