@@ -53,9 +53,7 @@ def protect_firmware(infile, outfile, version, message):
     padded_message = message.encode()
     while len(padded_message) != 1024:
         padded_message += b'\x00'
-    if message_length == 1024:
-        padded_message = message.encode()
-    else:
+    if message_length > 1024:
         # If the message is longer than 1024 bytes, truncate it (but this shouldn't happen since the 
         # parameters for the challenge said that the largest message to handle would be 1 kB)
         padded_message = message.encode()[:1024]
@@ -68,10 +66,13 @@ def protect_firmware(infile, outfile, version, message):
     
     # Append signature to frame
     version_frame = version_frame + version_sig
-    print('metadata norm: ')
+    print('\nmetadata norm: ')
     print_hex(metadata)
     print('\n enc meta')
     print_hex(enc_meta)
+    print('\nsignature:')
+    print_hex(version_sig)
+    
 
     # Write version frame to outfile (writing frame 0 first specifically)
     with open(outfile, "wb+") as out_fp:

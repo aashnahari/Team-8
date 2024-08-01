@@ -34,6 +34,14 @@ ser = serial.Serial("/dev/ttyACM0", 115200)
 RESP_OK = b"\x04"
 FRAME_SIZE = 562 - 16 #we took away the IV
 
+def read_byte():
+    byte = ser.read(1)
+    if byte.decode == b'W':
+        raise RuntimeError("ERROR: Bootloader freaking reset!??!")
+    while byte != b'\x04':
+        byte = ser.read(1)
+        print(byte)
+    return byte
 
 def send_frame_zero(ser, frame_zero, debug=False):
     #assert(len(frame_zero) == 1060)
@@ -46,18 +54,21 @@ def send_frame_zero(ser, frame_zero, debug=False):
     ser.write(b"U")
 
     print("Waiting for bootloader to enter update mode...")
-    while ser.read(1).decode() != "U":
-        print("got a byte")
-        pass
+    if ser.read(1).decode() == "U":
+        print("starting load_firmware()")
 
-    #Send size and version to bootloader.
+    #Send size and version to bootloader
+    print_hex(frame_zero)
+    print(f'length of frame 0: {len(frame_zero)}')
+    ser.write(frame_zero)
+
+
     if debug:
         print(frame_zero)
 
-
-    ser.write(frame_zero)
+        
     # Wait for an OK from the bootloader.
-    resp = ser.read(1)
+    resp = read_byte()
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
     print('moving past frame_zero')
@@ -88,9 +99,9 @@ def update(ser, infile, debug):
     with open(infile, "rb") as fp:
         firmware_blob = fp.read()
 
-    frame_zero = firmware_blob[:1060]
-    firmware = firmware_blob[1060:-34]
-    end = firmware_blob[-34:]
+    frame_zero = firmware_blob[:1088]
+    firmware = firmware_blob[1088:-2]
+    end = firmware_blob[-2:]
     '''print_hex(frame_zero)
     print('\n')
     print_hex(firmware)
