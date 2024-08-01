@@ -77,6 +77,7 @@ def send_frame(ser, frame, debug=False):
     print('sending frame next')
     ser.write(frame)  # Write the frame...
     print_hex(frame)
+    print(f'length of frame {len(frame)}')
 
     if debug:
         print_hex(frame)
