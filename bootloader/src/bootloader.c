@@ -64,11 +64,12 @@ uint8_t * fw_release_message_address;
 // Frame Buffers
 unsigned char encrypted_data[FLASH_PAGESIZE];
 unsigned char unencrypted_data[FLASH_PAGESIZE];
-unsigned char message[MESSAGE_SIZE];    //version + data size + message
+unsigned char message[MESSAGE_SIZE];    
 unsigned char signature[HMAC_SIZE];
 unsigned char end_signature[HMAC_SIZE];
 unsigned char meta[16];
 unsigned char iv[IV_SIZE];
+unsigned char for_flash[MESSAGE_SIZE + 4];
 
 
 
@@ -132,8 +133,8 @@ int main(void) {
             nl(UART0);
         } else if (instruction == BOOT) {
             uart_write_str(UART0, "B");
-            uart_write_str(UART0, "\nHmmm..we're booting firmware...\n");
             boot_firmware();
+            uart_write_str(UART0, "Booted.\n");
             reencrypt_firmware();
         }
     }
@@ -159,6 +160,7 @@ bool verify_hmac(uint8_t *sig, const uint8_t *ky, uint8_t *msg, int msg_size){  
     if (memcmp(hmac_result, sig, HMAC_SIZE) != 0) {
         return false;
     }  
+    wc_HmacFree(&hmac);
     return true;
 }
 
@@ -244,12 +246,19 @@ void load_firmware(void) {
 
 
     // Write metadata & message to flash
-//make an array of the message & metadata
+ 
+    for (int h = 0; h < MESSAGE_SIZE; ++h){
+        for_flash[h] = (uint8_t)message[h];
+    }
+    uint8_t counter = 0;
+    for (int q = MESSAGE_SIZE; q < MESSAGE_SIZE + 4; ++q){
+        for_flash[q] = meta[counter];
+        ++counter;
+    }
     
     //flash the metadata & the message (put them in an array together)
-    program_flash((uint8_t *)METADATA_BASE, (uint8_t *)(&metadata), 4);
-    //program_flash((uint8_t *)(METADATA_BASE + 4), message, MESSAGE_SIZE);
-
+    program_flash((uint8_t *)METADATA_BASE, for_flash, MESSAGE_SIZE+4);
+    
    //send ok... start sending firmware frames
     uart_write(UART0, OK);
 
@@ -273,7 +282,7 @@ void load_firmware(void) {
         
         //assign each piece of data frame to their respective buffers
         for (int a = 0; a < frame_length; ++a) {
-            encrypted_data[data_index] = uart_read(UART0, BLOCKING, &status);
+            encrypted_data[a] = uart_read(UART0, BLOCKING, &status);
             data_index += 1;
         }
 
@@ -381,21 +390,19 @@ void boot_firmware(void) {
 
     // Buffer to hold decrypted firmware
 
-    uint32_t fw_addr = FW_BASE;
+    uint32_t fw_addr = (uint16_t *)FW_BASE;
     uint16_t fw_size = *(uint16_t*)fw_size_address;
 
     // Decrypt the firmware in chunks and write it back to the same location
     while (fw_size > 0) {
-        uint32_t chunk_size = (fw_size > FLASH_PAGESIZE) ? FLASH_PAGESIZE : fw_size;
+        uint32_t chunk_size = 512;
+
 
         // Decrypt the chunk
-        wc_AesCbcDecrypt(&aes, unencrypted_data, (uint8_t*)fw_addr, chunk_size);
-
-        // Verify HMAC signature for each chunk (if applicable)
-        if (!verify_hmac(signature, HMAC_KEY, encrypted_data, chunk_size)) {
-            uart_write_str(UART0, "Firmware verification failed.\n");
+        if (wc_AesCbcDecrypt(&aes, unencrypted_data, FW_BASE, chunk_size)){
+            uart_write_str(UART0, "Nothing loaded.\n");
+        
             SysCtlReset();
-            return;
         }
 
         // Write decrypted chunk back to the same location
@@ -406,8 +413,9 @@ void boot_firmware(void) {
     }
 
     // Print the release message
-    uint8_t* fw_release_message_address = (uint8_t*)(METADATA_BASE + 4);
+    uint8_t* fw_release_message_address = (uint8_t*)(METADATA_BASE);
     uart_write_str(UART0, (char*)fw_release_message_address);
+    uart_write_str(UART0, "ok done.");
 
     // Boot the firmware
     __asm("LDR R0,=0x10001\n\t"
@@ -431,7 +439,7 @@ void reencrypt_firmware(void) {
 
     // Re-encrypt the firmware in chunks and write it back to the same location
     while (fw_size > 0) {
-        uint32_t chunk_size = (fw_size > FLASH_PAGESIZE) ? FLASH_PAGESIZE : fw_size;
+        uint32_t chunk_size = 512;
 
         // Read the decrypted chunk from memory
         memcpy(encrypted_data, (uint8_t*)fw_addr, chunk_size);
