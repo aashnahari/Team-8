@@ -58,7 +58,6 @@ def send_frame_zero(ser, frame_zero, debug=False):
         print("starting load_firmware()")
 
     #Send size and version to bootloader
-    print('frame zero: ')
     print_hex(frame_zero)
     print(f'length of frame 0: {len(frame_zero)}')
     ser.write(frame_zero)
@@ -77,8 +76,7 @@ def send_frame_zero(ser, frame_zero, debug=False):
 def send_frame(ser, frame, debug=False):
     print('sending frame next')
     ser.write(frame)  # Write the frame...
-    print('')
-    print_hex(frame[-16:])
+    print_hex(frame)
     print(f'length of frame {len(frame)}')
 
     if debug:
@@ -118,8 +116,9 @@ def update(ser, infile, debug):
     for idx, frame_start in enumerate(range(0, len(firmware), FRAME_SIZE)):
         # getting each (already divided) frame from firmware_protected.bin
         frame = firmware[frame_start : frame_start+FRAME_SIZE]
-        print(f'frame start: {frame_start}')
-        print_hex(frame)
+        if idx == 5:
+            print(f'frame start: {frame_start}')
+            print_hex(frame)
         send_frame(ser, frame, debug=debug)
         print(f"\nWrote frame {idx} ({len(frame)} bytes)")
 

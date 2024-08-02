@@ -38,8 +38,8 @@ void reencrypt_firmware(void);
 void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 
 // Firmware Constants
-#define METADATA_BASE 0xAC00 // base address of version, size, & msg in Flash
-#define FW_BASE 0xFC00    // base address of firmware in Flash
+#define METADATA_BASE 0xfc00; // base address of version, size, & msg in Flash
+#define FW_BASE 0x10014;  // base address of firmware in Flash
 
 // FLASH Constants
 #define FLASH_PAGESIZE 1024
@@ -340,79 +340,68 @@ void load_firmware(void) {
  * This functions performs an erase of the specified flash page before writing
  * the data.
  */
-long program_flash(void* page_addr, unsigned char * data, unsigned int data_len) {
+long program_flash(void* page_addr, unsigned char* data, unsigned int data_len) {
     uint32_t word = 0;
     int ret;
     int i;
-    uint32_t aligned_addr = 0;
+    uint32_t aligned_addr = (uint32_t)page_addr; 
 
-    if ((uint32_t)page_addr > 0x0003FFFF){
-        aligned_addr = (uint32_t)page_addr & ~(FLASH_PAGESIZE - 1) - 0x0003FFFF;
-    } else{
-        aligned_addr = (uint32_t)page_addr & ~(FLASH_PAGESIZE - 1);
-    }
-    
+    // Ensure the aligned address is within the valid flash range
     if (aligned_addr < 0x00000000 || aligned_addr > 0x0003FFFF) {
-        // Address is out of range, handle the error
-        uart_write_str(UART0, "Address out of valid flash range\n address is: ");
+        uart_write_str(UART0, "Address out of valid flash range\n");
         uart_write_hex_bytes(UART0, (uint8_t*)&aligned_addr, sizeof(aligned_addr));
-        return 0;  // Or handle appropriately
+        aligned_addr = (uint32_t)page_addr & ~(FLASH_PAGESIZE - 1);
+        if (aligned_addr < 0x00000000 || aligned_addr > 0x0003FFFF){
+            uart_write_str(UART0, "aligned address is still out of valid flash range\n");
+            return -1;
+        }
+          // Return an error
     }
 
-    if ((uint32_t)aligned_addr % FLASH_PAGESIZE != 0) {
+    // Check for misalignment
+    if (aligned_addr % FLASH_PAGESIZE != 0) {
         uart_write_str(UART0, "address misaligned\n");
-        //SysCtlReset();
+        return -1;  // Return an error or reset
     }
-    // Erase next FLASH page, added error handling
-    ret = FlashErase((uint32_t) aligned_addr);
+
+    // Erase the flash page at the aligned address
+    ret = FlashErase(aligned_addr);
     if (ret != 0) {
-        uart_write_str(UART0, "Erase failed.\n");
         uart_write_str(UART0, "Erase failed at address: ");
         uart_write_hex_bytes(UART0, (uint8_t*)&aligned_addr, sizeof(aligned_addr));
         uart_write_str(UART0, "\n");
-        }
-        //SysCtlReset();
         return ret;
     }
 
-    // Clear potentially unused bytes in last word
-    // If data not a multiple of 4 (word size), program up to the last word
-    // Then create temporary variable to create a full last word
-    if (data_len % FLASH_WRITESIZE) {
-        // Get number of unused bytes
-        int rem = data_len % FLASH_WRITESIZE;
-        int num_full_bytes = data_len - rem;
+    // seperate data into full words & overflow
+    int full_words = data_len / FLASH_WRITESIZE;
+    int rem_bytes = data_len % FLASH_WRITESIZE;
 
-        // Program up to the last word
-        ret = FlashProgram((unsigned long *)data, (uint32_t) page_addr, num_full_bytes);
+    // Program full words first
+    ret = FlashProgram((unsigned long*)data, aligned_addr, full_words * FLASH_WRITESIZE);
+    if (ret != 0) {
+        uart_write_str(UART0, "Flash Program failed on full words.\n");
+        return ret;
+    }
+
+    // Handle the last word if there's a remainder
+    if (rem_bytes > 0) {
+        word = 0xFFFFFFFF;  // Fill the word with 0xFF by default
+        for (i = 0; i < rem_bytes; i++) {
+            word = (word >> 8) | (data[full_words * FLASH_WRITESIZE + i] << 24);
+        }
+
+        ret = FlashProgram(&word, aligned_addr + full_words * FLASH_WRITESIZE, FLASH_WRITESIZE);
         if (ret != 0) {
-            uart_write_str(UART0, "Flash Program failed on full words.\n");
+            uart_write_str(UART0, "Flash Program failed on last word.\n");
             return ret;
         }
-
-        // Create last word variable -- fill unused with 0xFF
-        for (i = 0; i < rem; i++) {
-            word = (word >> 8) | (data[num_full_bytes + i] << 24); // Essentially a shift register from MSB->LSB
-        }
-        for (i = i; i < 4; i++) {
-            word = (word >> 8) | 0xFF000000;
-        }
-
-        ret = FlashProgram(&word, (uint32_t) page_addr + num_full_bytes, 4);
-            if (ret != 0) {
-                uart_write_str(UART0, "Flash Program failed on last word.\n");
-                return ret;
-            } else {
-            ret = FlashProgram((unsigned long *)data, (uint32_t) page_addr, data_len);
-            if (ret != 0) {
-                uart_write_str(UART0, "Flash Program failed on full data.\n");
-                return ret;
-            } else{
-                 uart_write_str(UART0, "Flash Program successful.\n");
-             }
-        }
-       
     }
+
+    uart_write_str(UART0, "Flash Program successful.\n");
+    return 0;  // Success
+}
+
 
 void boot_firmware(void) {
     
