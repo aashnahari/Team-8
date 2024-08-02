@@ -40,6 +40,7 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 // Firmware Constants
 #define METADATA_BASE 0xfc00 // base address of version, size, & msg in Flash
 #define FW_BASE 0x20000  // base address of firmware in Flash
+#define FW_TEMP 0x1000 //base address of temp firmware
 
 // FLASH Constants
 #define FLASH_PAGESIZE 1024
@@ -62,6 +63,8 @@ uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2);
 uint8_t * fw_release_message_address;
 
 // Frame Buffers
+unsigned char encrypted_data[512];
+unsigned char unencrypted_data[512];
 unsigned char encrypted_data[512];
 unsigned char unencrypted_data[512];
 unsigned char message[MESSAGE_SIZE];    
@@ -297,7 +300,7 @@ void load_firmware(void) {
 
         
         //assign each piece of data frame to their respective buffers
-        for (int a = 0; a < frame_length; ++a) {
+        for (int a = 0; a < frame_length+HMAC_SIZE; ++a) {
             encrypted_data[a] = uart_read(UART0, BLOCKING, &status);
             data_index += 1;
         }
@@ -307,20 +310,32 @@ void load_firmware(void) {
         }
         
         //if we fill page buffer...
+
+        if (verify_hmac(signature, HMAC_KEY, encrypted_data, frame_length) == false) {
+            SysCtlReset();
+        }
   
-        if (data_index == FLASH_PAGESIZE) {
-            if (program_flash((uint8_t *)page_addr, encrypted_data, data_index)) {
+        if (data_index % FLASH_PAGESIZE == 0) {
+            int8_t error = program_flash((uint8_t *)page_addr, encrypted_data, data_index);
+
+            if (error) {
                 uart_write(UART0, ERROR);
                 SysCtlReset();
             }
 
             page_addr += FLASH_PAGESIZE;
-            data_index = 0;
+        }
+        else{
+            int8_t error = program_flash((uint8_t *)page_addr, encrypted_data, data_index);
+
+            if (error) {
+                uart_write(UART0, ERROR);
+                SysCtlReset();
+            }
+            page_addr += 0x200
         }
 
-        if (verify_hmac(signature, HMAC_KEY, encrypted_data, frame_length) == false) {
-            SysCtlReset();
-        }
+
     
         uart_write(UART0, OK);
     
