@@ -38,8 +38,8 @@ void reencrypt_firmware(void);
 void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 
 // Firmware Constants
-#define METADATA_BASE 0x00000000 // base address of version and firmware size in Flash
-#define FW_BASE 0x00005000     // base address of firmware in Flash
+#define METADATA_BASE 0xAC00 // base address of version, size, & msg in Flash
+#define FW_BASE 0xFC00    // base address of firmware in Flash
 
 // FLASH Constants
 #define FLASH_PAGESIZE 1024
@@ -183,7 +183,7 @@ void load_firmware(void) {
     uint8_t enc_meta[16];
 
    
-// reading FRAME 0
+    // reading FRAME 0
     //first recieving the IV
     for (int b = 0; b < IV_SIZE; ++b) {
         iv[b] = uart_read(UART0, BLOCKING, &status);
@@ -229,7 +229,6 @@ void load_firmware(void) {
 
     // Compare to old version and abort if older (note special case for version 0)
 
-//figure out how "old version" is stored
     FlashErase((uint32_t) fw_version_address);
     uint16_t old_version = *fw_version_address;
     if (old_version == 0xFFFF) {
@@ -360,25 +359,17 @@ long program_flash(void* page_addr, unsigned char * data, unsigned int data_len)
         return 0;  // Or handle appropriately
     }
 
-    if ((uint32_t)page_addr % FLASH_PAGESIZE != 0) {
+    if ((uint32_t)aligned_addr % FLASH_PAGESIZE != 0) {
         uart_write_str(UART0, "address misaligned\n");
         //SysCtlReset();
     }
     // Erase next FLASH page, added error handling
-    ret = FlashErase((uint32_t) page_addr);
+    ret = FlashErase((uint32_t) aligned_addr);
     if (ret != 0) {
         uart_write_str(UART0, "Erase failed.\n");
         uart_write_str(UART0, "Erase failed at address: ");
         uart_write_hex_bytes(UART0, (uint8_t*)&aligned_addr, sizeof(aligned_addr));
         uart_write_str(UART0, "\n");
-        page_addr = 0x00002000;
-        ret = FlashErase((uint32_t) page_addr);
-        if (ret != 0) {
-            uart_write_str(UART0, "Erase failed at hard-coded address 0x00002000");
-            return ret;
-        } else {
-            uart_write_str(UART0, "WORKS at hard-coded address 0x00002000");
-            return ret;
         }
         //SysCtlReset();
         return ret;
@@ -411,17 +402,17 @@ long program_flash(void* page_addr, unsigned char * data, unsigned int data_len)
             if (ret != 0) {
                 uart_write_str(UART0, "Flash Program failed on last word.\n");
                 return ret;
-            }
-        } else {
+            } else {
             ret = FlashProgram((unsigned long *)data, (uint32_t) page_addr, data_len);
             if (ret != 0) {
                 uart_write_str(UART0, "Flash Program failed on full data.\n");
                 return ret;
-            }
+            } else{
+                 uart_write_str(UART0, "Flash Program successful.\n");
+             }
         }
-        //uart_write_str(UART0, "Flash Program successful.\n");
-        return 0;
-}
+       
+    }
 
 void boot_firmware(void) {
     
