@@ -71,7 +71,7 @@ unsigned char signature[HMAC_SIZE];
 unsigned char end_signature[HMAC_SIZE];
 unsigned char meta[16];
 unsigned char iv[IV_SIZE];
-unsigned char for_flash[MESSAGE_SIZE + 4];
+unsigned char for_flash[MESSAGE_SIZE + 20];
 
 
 
@@ -255,6 +255,10 @@ void load_firmware(void) {
     for (int q = MESSAGE_SIZE; q < MESSAGE_SIZE + 4; ++q){
         for_flash[q] = meta[counter];
         ++counter;
+    }
+
+    for (int i = MESSAGE_SIZE+4; i < MESSAGE_SIZE+20; ++i){
+        for_flash[i] = iv[i-MESSAGE_SIZE-4];
     }
     
     //flash the metadata & the message (put them in an array together)
@@ -473,6 +477,12 @@ void boot_firmware(void) {
 
     // Set AES key for decryption
     wc_AesSetKey(&aes, AES_KEY, 32, iv, AES_DECRYPTION);
+    unsigned char iv[16];
+
+    // Re-encrypt the firmware in chunks and write it back to the same location
+
+    memcpy(iv, METADATA_BASE+4, 16);
+    wc_AesSetIV(&aes, iv);
 
     // Buffer to hold decrypted firmware
 
@@ -524,8 +534,6 @@ void reencrypt_firmware(void) {
 
     uint32_t fw_addr = FW_BASE;
     uint16_t fw_size = *(uint16_t*)fw_size_address;
-
-    // Re-encrypt the firmware in chunks and write it back to the same location
 
 
     unsigned char reencrypted_flashable[FLASH_PAGESIZE];
