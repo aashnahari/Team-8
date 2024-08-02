@@ -40,7 +40,7 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 // Firmware Constants
 #define METADATA_BASE 0xfc00 // base address of version, size, & msg in Flash
 #define FW_BASE 0x20000  // base address of firmware in Flash
-#define FW_TEMP 0x1000 //base address of temp firmware
+#define FW_TEMP 0x10000 //base address of temp firmware
 
 // FLASH Constants
 #define FLASH_PAGESIZE 1024
@@ -65,8 +65,7 @@ uint8_t * fw_release_message_address;
 // Frame Buffers
 unsigned char encrypted_data[512];
 unsigned char unencrypted_data[512];
-unsigned char encrypted_data[512];
-unsigned char unencrypted_data[512];
+unsigned char temp_data[FLASH_PAGESIZE];
 unsigned char message[MESSAGE_SIZE];    
 unsigned char signature[HMAC_SIZE];
 unsigned char end_signature[HMAC_SIZE];
@@ -180,7 +179,8 @@ void load_firmware(void) {
     uint32_t rcv = 0;
 
     uint32_t data_index = 0;
-    uint32_t page_addr = FW_BASE;
+    uint32_t temp_addr = FW_TEMP;
+    uint32_t firmware_addr = FW_BASE;
     uint32_t version = 0;
     uint32_t size = 0;
     uint8_t enc_meta[16];
@@ -282,9 +282,10 @@ void load_firmware(void) {
     uart_write(UART0, OK);
 
    
-
+    int chunk = 1;
 // Loop to handle frames
     while (1) {
+
         rcv = uart_read(UART0, BLOCKING, &status);
         frame_length = (uint32_t)rcv;
         rcv = uart_read(UART0, BLOCKING, &status);
@@ -300,22 +301,52 @@ void load_firmware(void) {
 
         
         //assign each piece of data frame to their respective buffers
-        for (int a = 0; a < frame_length+HMAC_SIZE; ++a) {
+        for (int a = 0; a < frame_length; ++a) {
             encrypted_data[a] = uart_read(UART0, BLOCKING, &status);
-            data_index += 1;
+
         }
 
         for (int c = 0; c < HMAC_SIZE; ++c) {
             signature[c] = uart_read(UART0, BLOCKING, &status);
         }
         
-        //if we fill page buffer...
+
 
         if (verify_hmac(signature, HMAC_KEY, encrypted_data, frame_length) == false) {
             SysCtlReset();
         }
+
+        if (chunk == 1){
+
+            if (program_flash((uint8_t *) temp_addr, encrypted_data, 512)) {
+                uart_write(UART0, ERROR);
+                SysCtlReset(); 
+                return;
+            }
+
+            // Update to next page
+            chunk++;
+        } // if
+        else{         //if we fill page buffer...
+
+            memcpy(temp_data, (uint8_t*)temp_addr, 512);
+            for (int i = 0; i < 512; ++i){
+                temp_data[i+512] = encrypted_data[i];
+            }
+
+            if (program_flash((uint8_t *) firmware_addr, temp_data, FLASH_PAGESIZE)) {
+                uart_write(UART0, ERROR);
+                SysCtlReset(); 
+                return;
+            }
+            chunk = 1;
+            firmware_addr+= FLASH_PAGESIZE;
+        }
+
+        uart_write(UART0, OK); // Acknowledge the frame.
+    } 
   
-        if (data_index % FLASH_PAGESIZE == 0) {
+        /*if (data_index % FLASH_PAGESIZE == 0) {
             int8_t error = program_flash((uint8_t *)page_addr, encrypted_data, data_index);
 
             if (error) {
@@ -337,11 +368,11 @@ void load_firmware(void) {
 
 
     
-        uart_write(UART0, OK);
+        uart_write(UART0, OK);*/
     
      
     }
-}
+
 
 
 
@@ -447,24 +478,27 @@ void boot_firmware(void) {
 
     uint32_t fw_addr = (uint16_t *)FW_BASE;
     uint16_t fw_size = *(uint16_t*)fw_size_address;
+    unsigned char decrypted_flashable[FLASH_PAGESIZE];
+    unsigned char encrypted_flashed[FLASH_PAGESIZE];
+    while (fw_addr < (FW_BASE + fw_size)){
 
-    // Decrypt the firmware in chunks and write it back to the same location
-    while (fw_size > 0) {
-        uint32_t chunk_size = 512;
+        memcpy(encrypted_flashed, (uint8_t*)fw_addr, FLASH_PAGESIZE);
+        // Decrypt the firmware in chunks and write it back to the same location
+        if (wc_AesCbcDecrypt(&aes, decrypted_flashable, encrypted_flashed, FLASH_PAGESIZE)){
+                uart_write_str(UART0, "still not working, press reset.\n");
+                //SysCtlReset();
+            }
 
 
-        // Decrypt the chunk
-        if (wc_AesCbcDecrypt(&aes, unencrypted_data, fw_addr, chunk_size)){
-            uart_write_str(UART0, "still not working, press reset.\n");
-            //SysCtlReset();
+        if (program_flash((uint8_t *) fw_addr, decrypted_flashable, FLASH_PAGESIZE)) {
+            uart_write(UART0, ERROR);
+            SysCtlReset(); 
+            return;
         }
 
-        // Write decrypted chunk back to the same location
-        program_flash(fw_addr, unencrypted_data, chunk_size);
-        
-        fw_addr += chunk_size;
-        fw_size -= chunk_size;
+        fw_addr+= FLASH_PAGESIZE;
     }
+    
 
     // Print the release message
     uint8_t* fw_release_message_address = (uint8_t*)(METADATA_BASE);
@@ -492,21 +526,46 @@ void reencrypt_firmware(void) {
     uint16_t fw_size = *(uint16_t*)fw_size_address;
 
     // Re-encrypt the firmware in chunks and write it back to the same location
-    while (fw_size > 0) {
-        uint32_t chunk_size = 512;
 
-        // Read the decrypted chunk from memory
-        memcpy(encrypted_data, (uint8_t*)fw_addr, chunk_size);
 
-        // Encrypt the chunk
-        wc_AesCbcEncrypt(&aes, encrypted_data, encrypted_data, chunk_size);
+    unsigned char reencrypted_flashable[FLASH_PAGESIZE];
+    unsigned char decrypted_flashed[FLASH_PAGESIZE];
+    while (fw_addr < (FW_BASE + fw_size)){
 
-        // Write encrypted chunk back to flash
-        program_flash((uint8_t*)fw_addr, encrypted_data, chunk_size);
+        memcpy(decrypted_flashed, (uint8_t*)fw_addr, FLASH_PAGESIZE);
+        if (wc_AesCbcEncrypt(&aes, reencrypted_flashable, decrypted_flashed, FLASH_PAGESIZE)){
+                uart_write_str(UART0, "still not working, press reset.\n");
+        }
 
-        fw_addr += chunk_size;
-        fw_size -= chunk_size;
+
+        if (program_flash((uint8_t *) fw_addr, reencrypted_flashable, FLASH_PAGESIZE)) {
+            uart_write(UART0, ERROR);
+            SysCtlReset(); 
+            return;
+        }
+
+        fw_addr+= FLASH_PAGESIZE;
     }
+    
+
+    // while (fw_size > 0) {
+    //     uint32_t chunk_size = 512;
+
+    //     // Read the decrypted chunk from memory
+    //     memcpy(encrypted_data, (uint8_t*)fw_addr, chunk_size);
+
+    //     // Encrypt the chunk
+    //     wc_AesCbcEncrypt(&aes, encrypted_data, encrypted_data, chunk_size);
+
+    //     // Write encrypted chunk back to flash
+    //     program_flash((uint8_t*)fw_addr, encrypted_data, chunk_size);
+
+    //     fw_addr += chunk_size;
+    //     fw_size -= chunk_size;
+    // }
+
+
+    
 }
 
 
