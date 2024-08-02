@@ -58,8 +58,8 @@ void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 #define BOOT ((unsigned char)'B')
 
 // Device metadata
-uint16_t * fw_version_address = (uint16_t *)METADATA_BASE;
-uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2);
+uint16_t * fw_version_address = (uint16_t *)METADATA_BASE+ MESSAGE_SIZE;
+uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + MESSAGE_SIZE + 2);
 uint8_t * fw_release_message_address;
 
 // Frame Buffers
@@ -71,7 +71,7 @@ unsigned char signature[HMAC_SIZE];
 unsigned char end_signature[HMAC_SIZE];
 unsigned char meta[16];
 unsigned char iv[IV_SIZE];
-unsigned char for_flash[MESSAGE_SIZE + 4];
+unsigned char for_flash[MESSAGE_SIZE + 20];
 
 
 
@@ -500,7 +500,7 @@ void boot_firmware(void) {
             uart_write(UART0, ERROR);
             SysCtlReset(); 
         }
-
+        uart_write_str(UART0, fw_addr);
         fw_addr+= FLASH_PAGESIZE;
     }
     
@@ -512,6 +512,8 @@ void boot_firmware(void) {
     // Boot the firmware
     __asm("LDR R0,=0x20001\n\t"
           "BX R0\n\t");
+
+    uart_write_str(UART0, 'PAST BOOTLOADER'); 
 }
 
 
