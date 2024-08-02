@@ -256,21 +256,26 @@ void load_firmware(void) {
         for_flash[q] = meta[counter];
         ++counter;
     }
+    counter = 0;
+    for (int q = MESSAGE_SIZE+4; q < MESSAGE_SIZE + 20; ++q){
+        for_flash[q] = iv[counter];
+        ++counter;
+    }
     
     //flash the metadata & the message (put them in an array together)
-    program_flash((uint8_t *)METADATA_BASE, for_flash, MESSAGE_SIZE+4);
+    program_flash((uint8_t *)METADATA_BASE, for_flash, MESSAGE_SIZE+20);
 
     //error handling
-    if (program_flash((uint8_t *)METADATA_BASE, for_flash, MESSAGE_SIZE+4)) {
+    if (program_flash((uint8_t *)METADATA_BASE, for_flash, MESSAGE_SIZE+20)) {
         uart_write_str(UART0, "Programming metadata and message failed.\n");
         SysCtlReset();
     }
 
     //checking data from flash
-    unsigned char verify_data[MESSAGE_SIZE + 4];
-    memcpy(verify_data, (uint8_t *)METADATA_BASE, MESSAGE_SIZE + 4);
+    unsigned char verify_data[MESSAGE_SIZE + 20];
+    memcpy(verify_data, (uint8_t *)METADATA_BASE, MESSAGE_SIZE + 20);
     
-    if (memcmp(for_flash, verify_data, MESSAGE_SIZE + 4) != 0) {
+    if (memcmp(for_flash, verify_data, MESSAGE_SIZE + 20) != 0) {
         uart_write_str(UART0, "NFlash verification failed.\n");
         SysCtlReset();
     } else {
@@ -470,8 +475,9 @@ void boot_firmware(void) {
     // Initialize AES context
     Aes aes;
     wc_AesInit(&aes, NULL, INVALID_DEVID);
-
+    memcpy(iv, (uint8_t*)(METADATA_BASE+MESSAGE_SIZE+4), IV_SIZE);
     // Set AES key for decryption
+    wc_AesSetIV(&aes, iv);
     wc_AesSetKey(&aes, AES_KEY, 32, iv, AES_DECRYPTION);
 
     // Buffer to hold decrypted firmware
@@ -486,14 +492,13 @@ void boot_firmware(void) {
         // Decrypt the firmware in chunks and write it back to the same location
         if (wc_AesCbcDecrypt(&aes, decrypted_flashable, encrypted_flashed, FLASH_PAGESIZE)){
                 uart_write_str(UART0, "still not working, press reset.\n");
-                //SysCtlReset();
+                SysCtlReset();
             }
 
 
         if (program_flash((uint8_t *) fw_addr, decrypted_flashable, FLASH_PAGESIZE)) {
             uart_write(UART0, ERROR);
             SysCtlReset(); 
-            return;
         }
 
         fw_addr+= FLASH_PAGESIZE;
@@ -503,10 +508,9 @@ void boot_firmware(void) {
     // Print the release message
     uint8_t* fw_release_message_address = (uint8_t*)(METADATA_BASE);
     uart_write_str(UART0, (char*)fw_release_message_address);
-    uart_write_str(UART0, "ok done.");
 
     // Boot the firmware
-    __asm("LDR R0,=0x10001\n\t"
+    __asm("LDR R0,=0x20001\n\t"
           "BX R0\n\t");
 }
 
@@ -515,7 +519,7 @@ void reencrypt_firmware(void) {
     // Initialize AES context
     Aes aes;
     wc_AesInit(&aes, NULL, INVALID_DEVID);
-
+    memcpy(iv, (uint8_t*)METADATA_BASE+MESSAGE_SIZE+4, IV_SIZE);
 
     // Set AES key for encryption
     wc_AesSetKey(&aes, AES_KEY, 32, iv, AES_ENCRYPTION);
