@@ -38,8 +38,8 @@ void reencrypt_firmware(void);
 void uart_write_hex_bytes(uint8_t, uint8_t *, uint32_t);
 
 // Firmware Constants
-#define METADATA_BASE 0xfc00; // base address of version, size, & msg in Flash
-#define FW_BASE 0x10014;  // base address of firmware in Flash
+#define METADATA_BASE 0xfc00 // base address of version, size, & msg in Flash
+#define FW_BASE 0x20000  // base address of firmware in Flash
 
 // FLASH Constants
 #define FLASH_PAGESIZE 1024
@@ -62,8 +62,8 @@ uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2);
 uint8_t * fw_release_message_address;
 
 // Frame Buffers
-unsigned char encrypted_data[FLASH_PAGESIZE];
-unsigned char unencrypted_data[FLASH_PAGESIZE];
+unsigned char encrypted_data[512];
+unsigned char unencrypted_data[512];
 unsigned char message[MESSAGE_SIZE];    
 unsigned char signature[HMAC_SIZE];
 unsigned char end_signature[HMAC_SIZE];
@@ -214,10 +214,10 @@ void load_firmware(void) {
     wc_AesCbcDecrypt(&aes, meta, enc_meta, 16);
 
     //put the version & size in correct spots
-    version = (uint32_t)meta[1];
-    version |= (uint32_t)meta[0];
-    size = (uint32_t)meta[3];
-    size |= (uint32_t)meta[2] << 8;
+    version = (uint32_t)meta[0];
+    version = (uint32_t)meta[1] << 8;
+    size = (uint32_t)meta[2];
+    size |= (uint32_t)meta[3] << 8;
 
     uint32_t metadata = ((size & 0xFFFF) << 16) | (version & 0xFFFF);
 
@@ -229,7 +229,6 @@ void load_firmware(void) {
 
     // Compare to old version and abort if older (note special case for version 0)
 
-    FlashErase((uint32_t) fw_version_address);
     uint16_t old_version = *fw_version_address;
     if (old_version == 0xFFFF) {
         old_version = 1;
@@ -269,10 +268,10 @@ void load_firmware(void) {
     memcpy(verify_data, (uint8_t *)METADATA_BASE, MESSAGE_SIZE + 4);
     
     if (memcmp(for_flash, verify_data, MESSAGE_SIZE + 4) != 0) {
-        uart_write_str(UART0, "Flash verification failed.\n");
+        uart_write_str(UART0, "NFlash verification failed.\n");
         SysCtlReset();
     } else {
-        uart_write_str(UART0, "Flash verification successful.\n");
+        //uart_write_str(UART0, "YFlash verification successful.\n");
     }
 
     
@@ -352,7 +351,7 @@ long program_flash(void* page_addr, unsigned char* data, unsigned int data_len) 
         uart_write_hex_bytes(UART0, (uint8_t*)&aligned_addr, sizeof(aligned_addr));
         aligned_addr = (uint32_t)page_addr & ~(FLASH_PAGESIZE - 1);
         if (aligned_addr < 0x00000000 || aligned_addr > 0x0003FFFF){
-            uart_write_str(UART0, "aligned address is still out of valid flash range\n");
+            uart_write_str(UART0, "Oaligned address is still out of valid flash range\n");
             return -1;
         }
           // Return an error
@@ -360,7 +359,7 @@ long program_flash(void* page_addr, unsigned char* data, unsigned int data_len) 
 
     // Check for misalignment
     if (aligned_addr % FLASH_PAGESIZE != 0) {
-        uart_write_str(UART0, "address misaligned\n");
+        uart_write_str(UART0, "Xaddress misaligned\n");
         return -1;  // Return an error or reset
     }
 
@@ -380,7 +379,7 @@ long program_flash(void* page_addr, unsigned char* data, unsigned int data_len) 
     // Program full words first
     ret = FlashProgram((unsigned long*)data, aligned_addr, full_words * FLASH_WRITESIZE);
     if (ret != 0) {
-        uart_write_str(UART0, "Flash Program failed on full words.\n");
+        uart_write_str(UART0, "KFlash Program failed on full words.\n");
         return ret;
     }
 
@@ -393,12 +392,12 @@ long program_flash(void* page_addr, unsigned char* data, unsigned int data_len) 
 
         ret = FlashProgram(&word, aligned_addr + full_words * FLASH_WRITESIZE, FLASH_WRITESIZE);
         if (ret != 0) {
-            uart_write_str(UART0, "Flash Program failed on last word.\n");
+            uart_write_str(UART0, "MFlash Program failed on last word.\n");
             return ret;
         }
     }
 
-    uart_write_str(UART0, "Flash Program successful.\n");
+    //uart_write_str(UART0, "YFlash Program successful.\n");
     return 0;  // Success
 }
 
@@ -440,13 +439,13 @@ void boot_firmware(void) {
 
 
         // Decrypt the chunk
-        if (wc_AesCbcDecrypt(&aes, unencrypted_data, FW_BASE, chunk_size)){
+        if (wc_AesCbcDecrypt(&aes, unencrypted_data, fw_addr, chunk_size)){
             uart_write_str(UART0, "still not working, press reset.\n");
             //SysCtlReset();
         }
 
         // Write decrypted chunk back to the same location
-        program_flash((uint8_t*)fw_addr, unencrypted_data, chunk_size);
+        program_flash(fw_addr, unencrypted_data, chunk_size);
         
         fw_addr += chunk_size;
         fw_size -= chunk_size;
