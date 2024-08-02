@@ -58,6 +58,7 @@ def send_frame_zero(ser, frame_zero, debug=False):
         print("starting load_firmware()")
 
     #Send size and version to bootloader
+    print('frame zero: ')
     print_hex(frame_zero)
     print(f'length of frame 0: {len(frame_zero)}')
     ser.write(frame_zero)

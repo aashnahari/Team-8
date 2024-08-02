@@ -12,10 +12,10 @@
 #define MAX_MSG_LEN 1024
 
 // Firmware Constants
-#define METADATA_BASE 0xFC00 // base address of version and firmware size in Flash
+/* #define METADATA_BASE 0xFC00 // base address of version and firmware size in Flash
 #define FW_BASE 0x20000400      // base address of executable firmware in SRAM
 #define ENC_FW_BASE 0x20000  // base address of encrypted firmware in Flash 
-#define SIG_BASE 0x30000     // base address of firmware signatures
+#define SIG_BASE 0x30000  */    // base address of firmware signatures
 
 // FLASH Constants
 #define FLASH_PAGESIZE 1024
